@@ -76,4 +76,36 @@ describe('loadPayPalConfig', () => {
       'https://api-m.sandbox.paypal.com',
     );
   });
+
+  describe('non-JSON error bodies', () => {
+    const html = () => new Response('<html>Bad Gateway</html>', { status: 502 });
+
+    it('request() rejects with PayPalError(502) on an HTML body', async () => {
+      let n = 0;
+      const fn = (async () =>
+        n++ === 0
+          ? new Response(JSON.stringify(TOKEN_RESPONSE.body), { status: 200 })
+          : html()) as typeof fetch;
+      const err = await new PayPalClient(cfg, fn).request('GET', '/a').catch((e) => e);
+      expect(err).toBeInstanceOf(PayPalError);
+      expect(err.status).toBe(502);
+    });
+
+    it('accessToken() rejects with PayPalError(502) on an HTML body', async () => {
+      const fn = (async () => html()) as typeof fetch;
+      const err = await new PayPalClient(cfg, fn).accessToken().catch((e) => e);
+      expect(err).toBeInstanceOf(PayPalError);
+      expect(err.status).toBe(502);
+    });
+
+    it('request() throws PayPalError on an ok response with an unparsable body', async () => {
+      let n = 0;
+      const fn = (async () =>
+        n++ === 0
+          ? new Response(JSON.stringify(TOKEN_RESPONSE.body), { status: 200 })
+          : new Response('not json', { status: 200 })) as typeof fetch;
+      const err = await new PayPalClient(cfg, fn).request('GET', '/a').catch((e) => e);
+      expect(err).toBeInstanceOf(PayPalError);
+    });
+  });
 });

@@ -20,6 +20,16 @@ export class PayPalError extends Error {
 
 type Json = Record<string, any>;
 
+async function readBody(res: Response): Promise<{ body: Json; parsed: boolean }> {
+  const text = await res.text();
+  if (!text) return { body: {}, parsed: true };
+  try {
+    return { body: JSON.parse(text) as Json, parsed: true };
+  } catch {
+    return { body: { raw: text.slice(0, 500) }, parsed: false };
+  }
+}
+
 export class PayPalClient {
   private cached: { token: string; expiresAt: number } | null = null;
 
@@ -40,8 +50,8 @@ export class PayPalClient {
       },
       body: 'grant_type=client_credentials',
     });
-    const body = (await res.json()) as Json;
-    if (!res.ok) throw new PayPalError(res.status, body.debug_id, body);
+    const { body, parsed } = await readBody(res);
+    if (!res.ok || !parsed) throw new PayPalError(res.status, body.debug_id, body);
     this.cached = {
       token: body.access_token,
       expiresAt: this.now() + (body.expires_in - 60) * 1000,
@@ -66,9 +76,8 @@ export class PayPalClient {
       headers,
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
     });
-    const text = await res.text();
-    const body = text ? (JSON.parse(text) as Json) : {};
-    if (!res.ok) throw new PayPalError(res.status, body.debug_id, body);
+    const { body, parsed } = await readBody(res);
+    if (!res.ok || !parsed) throw new PayPalError(res.status, body.debug_id, body);
     return body as T;
   }
 }
