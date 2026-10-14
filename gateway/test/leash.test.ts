@@ -3,6 +3,7 @@ import { Leash, LeashError } from '../src/leash';
 import { Store } from '../src/store';
 import type { IntentCheck } from '../src/intent';
 import type { Mandate } from '../src/types';
+import { PayPalError } from '../src/paypal/client';
 import { FakePayPal, mandate, proposal } from './fakes';
 
 const NOW = new Date('2026-10-20T12:00:00Z');
@@ -75,10 +76,11 @@ describe('Leash.propose', () => {
 
   it('records PayPal charge failures', async () => {
     const { leash, m, paypal } = setup();
-    paypal.failCharge = new Error('INSTRUMENT_DECLINED');
+    const err = new PayPalError(422, undefined, { name: 'INSTRUMENT_DECLINED' });
+    paypal.failCharge = err;
     const p = await leash.propose(m.id, proposal());
     expect(p.status).toBe('failed');
-    expect(p.reasons).toEqual(['INSTRUMENT_DECLINED']);
+    expect(p.reasons).toEqual([err.message]);
   });
 
   it('keeps the capture when tracking fails', async () => {
@@ -270,5 +272,37 @@ describe('Leash commit time', () => {
     t = new Date('2026-10-21T09:00:00Z');
     await leash.approve(p.id);
     expect(store.getProposal(p.id)?.committedAt).toBe('2026-10-21T09:00:00.000Z');
+  });
+});
+
+describe('Leash charge retry', () => {
+  it('retries once with the same request id after a 502 and succeeds', async () => {
+    const { leash, m, paypal, store } = setup();
+    paypal.chargeErrors = [new PayPalError(502, undefined, { message: 'bad gateway' })];
+    const p = await leash.propose(m.id, proposal());
+    expect(p.status).toBe('tracked');
+    expect(paypal.chargeAttempts).toHaveLength(2);
+    expect(paypal.chargeAttempts[1]).toEqual(paypal.chargeAttempts[0]);
+    expect(paypal.chargeAttempts[0].requestId).toBe(`order-${p.id}`);
+    expect(store.listEvents(m.id).some((e) => e.actor === 'paypal' && e.detail.startsWith('Charge retried after: PayPal API error 502'))).toBe(true);
+  });
+
+  it('fails with an outcome-unknown reason when a network error repeats', async () => {
+    const { leash, m, paypal } = setup();
+    paypal.chargeErrors = [new TypeError('fetch failed'), new TypeError('fetch failed')];
+    const p = await leash.propose(m.id, proposal());
+    expect(p.status).toBe('failed');
+    expect(paypal.chargeAttempts).toHaveLength(2);
+    expect(p.reasons).toEqual([`PayPal outcome unknown after retry (fetch failed); check the PayPal dashboard for order reference ${p.id}`]);
+  });
+
+  it('does not retry a 422 decline', async () => {
+    const { leash, m, paypal } = setup();
+    const err = new PayPalError(422, 'dbg', { name: 'UNPROCESSABLE_ENTITY' });
+    paypal.chargeErrors = [err];
+    const p = await leash.propose(m.id, proposal());
+    expect(p.status).toBe('failed');
+    expect(paypal.chargeAttempts).toHaveLength(1);
+    expect(p.reasons).toEqual([err.message]);
   });
 });

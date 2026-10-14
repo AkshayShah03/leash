@@ -37,9 +37,15 @@ export class FakePayPal implements PayPalApi {
   refunds: Array<{ captureId: string; requestId: string }> = [];
   tracking: TrackingArgs[] = [];
   failCharge: Error | null = null;
+  /** Errors thrown by successive chargeVaulted calls (consumed in order); attempts are recorded in chargeAttempts. */
+  chargeErrors: Error[] = [];
+  chargeAttempts: ChargeArgs[] = [];
   failTracking: Error | null = null;
 
   async chargeVaulted(a: ChargeArgs): Promise<ChargeResult> {
+    this.chargeAttempts.push(a);
+    const queued = this.chargeErrors.shift();
+    if (queued) throw queued;
     if (this.failCharge) throw this.failCharge;
     this.charges.push(a);
     return { orderId: `ORDER-${this.charges.length}`, captureId: `CAP-${this.charges.length}` };

@@ -1,6 +1,7 @@
 import { decide, type Decision } from './decision';
 import type { IntentCheck } from './intent';
 import type { PayPalApi } from './paypal/api';
+import { PayPalError } from './paypal/client';
 import { evaluatePolicy } from './policy';
 import type { ProposalPatch, Store } from './store';
 import type { Actor, LedgerEvent, Mandate, Proposal, ProposalInput, ProposalStatus } from './types';
@@ -25,6 +26,12 @@ export interface LeashDeps {
 function summarize(d: Decision): string {
   if (d.outcome === 'auto_approved' && d.intent) return `intent ${d.intent.score.toFixed(2)}: ${d.intent.reason}`;
   return d.reasons.join('; ');
+}
+
+/** Ambiguous failures (5xx, network) may have moved money; declines, validation and an incomplete capture are definitive. */
+function isRetryableChargeError(e: unknown): boolean {
+  if (e instanceof PayPalError) return e.status >= 500;
+  return !(e instanceof Error && e.message.startsWith('Capture not completed'));
 }
 
 export class Leash {
@@ -126,19 +133,31 @@ export class Leash {
       return this.transition(p, 'failed', 'system', reason, { reasons: [reason] });
     }
 
+    const args = {
+      vaultId: m.vaultId,
+      amountCents: p.input.priceCents,
+      currency: p.input.currency,
+      description: p.input.title,
+      referenceId: p.id,
+      requestId: `order-${p.id}`,
+    };
     let charge: { orderId: string; captureId: string };
     try {
-      charge = await this.d.paypal.chargeVaulted({
-        vaultId: m.vaultId,
-        amountCents: p.input.priceCents,
-        currency: p.input.currency,
-        description: p.input.title,
-        referenceId: p.id,
-        requestId: `order-${p.id}`,
-      });
-    } catch (e) {
-      const reason = (e as Error).message;
-      return this.transition(p, 'failed', 'paypal', reason, { reasons: [reason] });
+      charge = await this.d.paypal.chargeVaulted(args);
+    } catch (first) {
+      if (!isRetryableChargeError(first)) {
+        const reason = (first as Error).message;
+        return this.transition(p, 'failed', 'paypal', reason, { reasons: [reason] });
+      }
+      const firstMessage = (first as Error).message;
+      // Same request id: PayPal idempotency returns the original result if the first attempt went through.
+      try {
+        charge = await this.d.paypal.chargeVaulted(args);
+      } catch (second) {
+        const reason = `PayPal outcome unknown after retry (${(second as Error).message}); check the PayPal dashboard for order reference ${p.id}`;
+        return this.transition(p, 'failed', 'paypal', reason, { reasons: [reason] });
+      }
+      this.event(this.proposal(p.id), this.proposal(p.id).status, 'paypal', `Charge retried after: ${firstMessage}`);
     }
     const { orderId, captureId } = charge;
     const charged = this.transition(p, 'captured', 'paypal', `Order ${orderId}, capture ${captureId}`, {
