@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { createInterface } from 'node:readline/promises';
 import { loadPayPalConfig } from '../src/config';
 import { PayPalRest } from '../src/paypal/api';
 import { PayPalClient } from '../src/paypal/client';
@@ -7,19 +6,21 @@ import { PayPalClient } from '../src/paypal/client';
 const api = new PayPalRest(new PayPalClient(loadPayPalConfig()));
 const runId = randomUUID();
 
-const setup = await api.createSetupToken({
-  returnUrl: 'https://example.com/leash/return',
-  cancelUrl: 'https://example.com/leash/cancel',
-});
-console.log(`\n1) Open this URL and log in with your SANDBOX PERSONAL account:\n   ${setup.approveUrl}\n`);
-const rl = createInterface({ input: process.stdin, output: process.stdout });
-try {
-  await rl.question('2) After approving (you will land on example.com), press Enter... ');
-} finally {
-  rl.close();
+// Two steps so no interactive stdin is needed:
+//   npm run spike            -> creates a setup token and prints the approve URL
+//   npm run spike -- <token> -> after browser approval, vaults, charges $1, tracks, refunds
+const setupTokenId = process.argv[2];
+if (!setupTokenId) {
+  const setup = await api.createSetupToken({
+    returnUrl: 'https://example.com/leash/return',
+    cancelUrl: 'https://example.com/leash/cancel',
+  });
+  console.log(`\n1) Open this URL and log in with your SANDBOX PERSONAL account:\n   ${setup.approveUrl}\n`);
+  console.log(`2) After approving (you will land on example.com), run:\n   npm run spike -- ${setup.id}\n`);
+  process.exit(0);
 }
 
-const { vaultId } = await api.createPaymentToken(setup.id);
+const { vaultId } = await api.createPaymentToken(setupTokenId);
 console.log(`vault_id: ${vaultId}`);
 
 const charge = await api.chargeVaulted({
