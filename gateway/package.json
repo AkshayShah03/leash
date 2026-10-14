@@ -1,0 +1,30 @@
+{
+  "name": "leash-gateway",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:e2e": "node --env-file=.env node_modules/vitest/vitest.mjs run test/e2e.sandbox.test.ts",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch --env-file=.env src/server.ts",
+    "start": "tsx src/server.ts",
+    "spike": "tsx --env-file=.env scripts/spike-vault.ts",
+    "smoke:intent": "tsx --env-file=.env scripts/smoke-intent.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.79",
+    "@hono/node-server": "^2.1.5",
+    "ai": "^7.0.139",
+    "hono": "^4.13.13",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}
