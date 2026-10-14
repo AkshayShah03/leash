@@ -249,3 +249,26 @@ describe('Leash money-path hardening', () => {
     err.mockRestore();
   });
 });
+
+describe('Leash commit time', () => {
+  it('stamps committedAt on auto-approve', async () => {
+    const { leash, m, store } = setup();
+    const p = await leash.propose(m.id, proposal());
+    expect(store.getProposal(p.id)?.committedAt).toBe(NOW.toISOString());
+  });
+
+  it('keeps committedAt null while pending_human and stamps approve time', async () => {
+    const store = new Store();
+    const paypal = new FakePayPal();
+    const { id: _i, vaultId: _v, setupTokenId: _s, ...input } = mandate();
+    const m = store.updateMandate(store.createMandate(input).id, { vaultId: 'VAULT-1' });
+    let t = new Date('2026-10-20T12:00:00Z');
+    const leash = new Leash({ store, paypal, intent: badIntent, now: () => t });
+    const p = await leash.propose(m.id, proposal());
+    expect(p.status).toBe('pending_human');
+    expect(p.committedAt).toBeNull();
+    t = new Date('2026-10-21T09:00:00Z');
+    await leash.approve(p.id);
+    expect(store.getProposal(p.id)?.committedAt).toBe('2026-10-21T09:00:00.000Z');
+  });
+});

@@ -6,13 +6,13 @@ import type {
 
 export const COMMITTED_STATUSES: ProposalStatus[] = ['auto_approved', 'human_approved', 'captured', 'tracked'];
 
-export type ProposalPatch = Partial<Pick<Proposal, 'status' | 'reasons' | 'intent' | 'paypal'>>;
+export type ProposalPatch = Partial<Pick<Proposal, 'status' | 'reasons' | 'intent' | 'paypal' | 'committedAt'>>;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS mandates (id TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS proposals (
   id TEXT PRIMARY KEY, mandate_id TEXT NOT NULL, status TEXT NOT NULL,
-  price_cents INTEGER NOT NULL, created_at TEXT NOT NULL, data TEXT NOT NULL
+  price_cents INTEGER NOT NULL, created_at TEXT NOT NULL, committed_at TEXT, data TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS proposals_by_mandate ON proposals (mandate_id, created_at);
 CREATE TABLE IF NOT EXISTS events (
@@ -29,6 +29,8 @@ export class Store {
   constructor(path = ':memory:') {
     this.db = new DatabaseSync(path);
     this.db.exec(SCHEMA);
+    const cols = this.db.prepare('PRAGMA table_info(proposals)').all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === 'committed_at')) this.db.exec('ALTER TABLE proposals ADD COLUMN committed_at TEXT');
   }
 
   createMandate(input: MandateInput): Mandate {
@@ -53,7 +55,7 @@ export class Store {
   createProposal(mandateId: string, input: ProposalInput, at: Date): Proposal {
     const p: Proposal = {
       id: randomUUID(), mandateId, input, status: 'proposed', reasons: [], intent: null, paypal: {},
-      createdAt: at.toISOString(),
+      createdAt: at.toISOString(), committedAt: null,
     };
     this.db
       .prepare('INSERT INTO proposals (id, mandate_id, status, price_cents, created_at, data) VALUES (?, ?, ?, ?, ?, ?)')
@@ -70,7 +72,7 @@ export class Store {
     const p = this.getProposal(id);
     if (!p) throw new Error(`Proposal ${id} not found`);
     const next: Proposal = { ...p, ...patch, paypal: { ...p.paypal, ...patch.paypal } };
-    this.db.prepare('UPDATE proposals SET status = ?, data = ? WHERE id = ?').run(next.status, JSON.stringify(next), id);
+    this.db.prepare('UPDATE proposals SET status = ?, committed_at = ?, data = ? WHERE id = ?').run(next.status, next.committedAt ?? null, JSON.stringify(next), id);
     return next;
   }
 
@@ -96,15 +98,15 @@ export class Store {
     const spent = this.db
       .prepare(
         `SELECT COALESCE(SUM(price_cents), 0) AS s FROM proposals
-         WHERE mandate_id = ? AND id != ? AND created_at >= ? AND status IN (${inList(COMMITTED_STATUSES)})`,
+         WHERE mandate_id = ? AND id != ? AND committed_at >= ? AND committed_at <= ? AND status IN (${inList(COMMITTED_STATUSES)})`,
       )
-      .get(mandateId, excludeProposalId, monthStart) as { s: number };
+      .get(mandateId, excludeProposalId, monthStart, iso) as { s: number };
     const orders = this.db
       .prepare(
         `SELECT COUNT(*) AS n FROM proposals
-         WHERE mandate_id = ? AND id != ? AND created_at >= ? AND status IN (${inList([...COMMITTED_STATUSES, 'refunded'])})`,
+         WHERE mandate_id = ? AND id != ? AND committed_at >= ? AND committed_at <= ? AND status IN (${inList([...COMMITTED_STATUSES, 'refunded'])})`,
       )
-      .get(mandateId, excludeProposalId, dayStart) as { n: number };
+      .get(mandateId, excludeProposalId, dayStart, iso) as { n: number };
     return { monthSpentCents: Number(spent.s), ordersToday: Number(orders.n) };
   }
 }

@@ -69,6 +69,8 @@ export interface Proposal {
   intent: IntentVerdict | null;
   paypal: PayPalRefs;
   createdAt: string;
+  /** Set once, when the proposal first becomes auto_approved/human_approved. */
+  committedAt: string | null;
 }
 
 export interface LedgerEvent {

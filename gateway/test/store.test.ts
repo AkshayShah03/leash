@@ -44,7 +44,7 @@ describe('Store', () => {
     const now = new Date('2026-10-20T12:00:00Z');
     const add = (cents: number, status: Parameters<Store['updateProposal']>[1]['status'], at: Date) => {
       const p = store.createProposal(m.id, proposal({ priceCents: cents }), at);
-      store.updateProposal(p.id, { status });
+      store.updateProposal(p.id, { status, committedAt: at.toISOString() });
       return p;
     };
     add(1000, 'tracked', new Date('2026-10-01T00:00:00Z'));
@@ -63,8 +63,26 @@ describe('Store', () => {
     const { store, m } = setup();
     const now = new Date('2026-10-20T12:00:00Z');
     const p = store.createProposal(m.id, proposal({ priceCents: 5000 }), now);
-    store.updateProposal(p.id, { status: 'auto_approved' });
+    store.updateProposal(p.id, { status: 'auto_approved', committedAt: now.toISOString() });
     expect(store.spendHistory(m.id, now).monthSpentCents).toBe(5000);
     expect(store.spendHistory(m.id, now, p.id).monthSpentCents).toBe(0);
+  });
+
+  it('windows spend by commit time, not creation time', () => {
+    const { store, m } = setup();
+    const p = store.createProposal(m.id, proposal({ priceCents: 4000 }), new Date('2026-10-31T23:00:00Z'));
+    store.updateProposal(p.id, { status: 'human_approved', committedAt: '2026-11-01T01:00:00.000Z' });
+    expect(store.getProposal(p.id)?.committedAt).toBe('2026-11-01T01:00:00.000Z');
+    const nov = store.spendHistory(m.id, new Date('2026-11-15T12:00:00Z'));
+    expect(nov.monthSpentCents).toBe(4000);
+    const oct = store.spendHistory(m.id, new Date('2026-10-31T23:30:00Z'));
+    expect(oct.monthSpentCents).toBe(0);
+    expect(oct.ordersToday).toBe(0);
+    expect(store.spendHistory(m.id, new Date('2026-11-01T12:00:00Z')).ordersToday).toBe(1);
+  });
+
+  it('starts proposals with committedAt null', () => {
+    const { store, m } = setup();
+    expect(store.createProposal(m.id, proposal(), new Date()).committedAt).toBeNull();
   });
 });

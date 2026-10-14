@@ -71,7 +71,7 @@ export class Leash {
     if (!rule.ok) {
       return this.transition(p, 'denied', 'policy', `Re-check failed: ${rule.reasons.join('; ')}`, { reasons: rule.reasons });
     }
-    return this.transition(p, status, actor, detail, patch);
+    return this.transition(p, status, actor, detail, { ...patch, committedAt: p.committedAt ?? this.now().toISOString() });
   }
 
   async propose(mandateId: string, input: ProposalInput): Promise<Proposal> {
