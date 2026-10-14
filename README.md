@@ -10,7 +10,7 @@ Leash is a trust layer between AI agents and PayPal. Agents can only *propose* p
 
 1. **Mandate** — the owner sets a goal and hard limits (per-order cap, monthly budget, categories, merchants, daily orders) and connects PayPal once (PayPal Vault).
 2. **Policy engine** — deterministic rules; a denial is final.
-3. **AI intent check** — Claude scores how well the product matches the goal and request. Product text is fenced as untrusted data. A low score sends the purchase to the owner; it can never approve something the rules denied.
+3. **AI intent check** — an open-weight model (Kimi K3 by default, via OpenRouter) scores how well the product matches the goal and request. Product text is fenced as untrusted data. A low score sends the purchase to the owner; it can never approve something the rules denied.
 4. **Execution** — PayPal Orders v2 charge on the vaulted wallet, shipment tracking, one-click refunds. Every call is idempotent (`PayPal-Request-Id`).
 5. **Roles** — the agent key can only propose and read; approve/deny/refund/connect need the owner key.
 
@@ -20,11 +20,11 @@ Leash runs entirely on the PayPal **sandbox**. Purchases are paid to the project
 
 ## Run it
 
-Requirements: Node ≥ 22.13, a PayPal developer sandbox app with Vault ("save payment methods") enabled, an Anthropic API key.
+Requirements: Node ≥ 22.13, a PayPal developer sandbox app with Vault ("save payment methods") enabled, an OpenRouter API key.
 
 ```bash
 cd gateway
-cp .env.example .env   # fill in PayPal + Anthropic credentials
+cp .env.example .env   # fill in PayPal + OpenRouter credentials
 # LEASH_AGENT_KEY and LEASH_OWNER_KEY must be changed from the placeholders
 # (change-me-*) and must differ from each other; the server refuses to start otherwise.
 npm install
@@ -36,7 +36,7 @@ npm run dev            # gateway on http://localhost:8787
 
 ## AI tools used
 
-- **Claude (Anthropic) via Vercel AI SDK** — purchase intent check with structured output.
+- **Kimi K3 (Moonshot AI, open weights) via OpenRouter + Vercel AI SDK**: purchase intent check with JSON-schema structured output. Any OpenRouter model can be swapped in with `LEASH_MODEL`.
 
 ## License
 
