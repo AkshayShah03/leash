@@ -116,4 +116,15 @@ describe('HTTP API', () => {
     expect((await s.call('POST', `/api/proposals/${p.id}/approve`, OWNER)).status).toBe(409);
     expect((await s.call('POST', '/api/mandates/nope/proposals', AGENT, proposal())).status).toBe(404);
   });
+
+  it('returns 400 invalid_json for a malformed JSON body', async () => {
+    const s = setup();
+    const res = await s.app.request('/api/mandates', {
+      method: 'POST',
+      headers: { authorization: OWNER, 'content-type': 'application/json' },
+      body: '{not json',
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'invalid_json' });
+  });
 });

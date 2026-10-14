@@ -79,6 +79,7 @@ export function createApp(d: AppDeps) {
   app.onError((err, c) => {
     if (err instanceof LeashError) return c.json({ error: err.message }, err.code === 'not_found' ? 404 : 409);
     if (err instanceof z.ZodError) return c.json({ error: 'invalid_request', issues: err.issues }, 400);
+    if (err instanceof SyntaxError) return c.json({ error: 'invalid_json' }, 400);
     console.error(err);
     return c.json({ error: 'internal_error' }, 500);
   });
