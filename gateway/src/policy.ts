@@ -3,6 +3,17 @@ import type { Mandate, ProposalInput, RuleResult, SpendHistory } from './types';
 
 const norm = (s: string) => s.trim().toLowerCase();
 
+export function normMerchant(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//, '')
+    .replace(/[/?#].*$/, '')
+    .replace(/:\d*$/, '')
+    .replace(/^www\./, '')
+    .replace(/\.+$/, '');
+}
+
 export function evaluatePolicy(m: Mandate, p: ProposalInput, h: SpendHistory): RuleResult {
   if (!Number.isInteger(p.priceCents) || p.priceCents <= 0) {
     return { ok: false, reasons: ['Price must be a positive whole number of cents'] };
@@ -22,11 +33,11 @@ export function evaluatePolicy(m: Mandate, p: ProposalInput, h: SpendHistory): R
   if (m.allowedCategories.length > 0 && !m.allowedCategories.map(norm).includes(norm(p.category))) {
     reasons.push(`Category "${p.category}" is not in the allowed categories`);
   }
-  const merchant = norm(p.merchant);
-  if (m.blockedMerchants.map(norm).includes(merchant)) {
+  const merchant = normMerchant(p.merchant);
+  if (m.blockedMerchants.map(normMerchant).includes(merchant)) {
     reasons.push(`Merchant "${p.merchant}" is blocked`);
   }
-  if (m.allowedMerchants !== null && !m.allowedMerchants.map(norm).includes(merchant)) {
+  if (m.allowedMerchants !== null && !m.allowedMerchants.map(normMerchant).includes(merchant)) {
     reasons.push(`Merchant "${p.merchant}" is not in the allowed merchants`);
   }
   if (h.ordersToday >= m.maxOrdersPerDay) {

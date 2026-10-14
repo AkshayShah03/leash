@@ -77,3 +77,18 @@ describe('evaluatePolicy', () => {
     expect(reasonsOf(r)).toHaveLength(3); // cap, budget, category
   });
 });
+
+describe('merchant normalization', () => {
+  it.each(['https://www.evil.com/', 'EVIL.COM.', 'www.evil.com:443/path', 'http://evil.com?x=1', 'evil.com#frag', 'evil.com..'])(
+    'blocked evil.com denies variant %s',
+    (variant) => {
+      const r = evaluatePolicy(mandate({ blockedMerchants: ['evil.com'] }), proposal({ merchant: variant }), fresh);
+      expect(reasonsOf(r)).toContain(`Merchant "${variant}" is blocked`);
+    },
+  );
+
+  it('allowed shop.example.com accepts a full URL variant', () => {
+    const m = mandate({ allowedMerchants: ['shop.example.com'] });
+    expect(evaluatePolicy(m, proposal({ merchant: 'https://www.Shop.Example.com/item/1' }), fresh)).toEqual({ ok: true });
+  });
+});
