@@ -23,7 +23,7 @@ if (agentKey === ownerKey) throw new Error('LEASH_AGENT_KEY and LEASH_OWNER_KEY 
 const port = Number(process.env.PORT ?? 8787);
 const paypal = new PayPalRest(new PayPalClient(loadPayPalConfig()));
 const store = new Store(process.env.LEASH_DB_PATH ?? 'leash.db');
-const leash = new Leash({ store, paypal, intent: makeIntentChecker(llmGenerate()) });
+const leash = new Leash({ store, paypal, intent: makeIntentChecker(llmGenerate(), 15_000) });
 const app = createApp({
   leash,
   store,

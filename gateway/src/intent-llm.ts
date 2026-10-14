@@ -3,6 +3,8 @@ import { generateText, Output } from 'ai';
 import { verdictSchema, type GenerateVerdict } from './intent';
 
 export const DEFAULT_MODEL = 'moonshotai/kimi-k3';
+// A verdict is a few dozen tokens; leave headroom for reasoning models without reserving the model's full limit.
+export const MAX_OUTPUT_TOKENS = 1024;
 
 export interface LlmOptions {
   apiKey?: string;
@@ -25,6 +27,7 @@ export function llmGenerate(opts: LlmOptions = {}): GenerateVerdict {
     const { output } = await generateText({
       model,
       output: Output.object({ schema: verdictSchema }),
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
       system,
       prompt,
     });

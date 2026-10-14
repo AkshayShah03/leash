@@ -37,6 +37,7 @@ describe('llmGenerate (OpenRouter)', () => {
     expect(calls[0].body.model).toBe('qwen/qwen3.8-flash');
     expect(calls[0].body.response_format.type).toBe('json_schema');
     expect(calls[0].body.provider).toMatchObject({ require_parameters: true });
+    expect(calls[0].body.max_tokens).toBe(1024);
     expect(JSON.stringify(calls[0].body.messages)).toContain('SYS');
     expect(JSON.stringify(calls[0].body.messages)).toContain('PROMPT');
   });
