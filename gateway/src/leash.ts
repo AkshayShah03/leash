@@ -28,6 +28,8 @@ function summarize(d: Decision): string {
 }
 
 export class Leash {
+  private refunding = new Set<string>();
+
   constructor(private d: LeashDeps) {}
 
   private now(): Date {
@@ -50,7 +52,11 @@ export class Leash {
     const e = this.d.store.appendEvent({
       proposalId: p.id, mandateId: p.mandateId, status, actor, detail, at: this.now().toISOString(),
     });
-    this.d.onEvent?.(e);
+    try {
+      this.d.onEvent?.(e);
+    } catch (err) {
+      console.error('Leash onEvent listener threw', err);
+    }
   }
 
   private transition(p: Proposal, status: ProposalStatus, actor: Actor, detail: string, patch: ProposalPatch = {}): Proposal {
@@ -80,7 +86,7 @@ export class Leash {
     if (decision.outcome !== 'auto_approved') {
       return this.transition(p, decision.outcome, rule.ok ? 'intent' : 'policy', summarize(decision), patch);
     }
-    const committed = this.commit(m, p, 'auto_approved', 'intent', summarize(decision), patch);
+    const committed = this.commit(this.mandate(mandateId), p, 'auto_approved', 'intent', summarize(decision), patch);
     return committed.status === 'auto_approved' ? this.execute(committed) : committed;
   }
 
@@ -103,8 +109,14 @@ export class Leash {
     if ((p.status !== 'captured' && p.status !== 'tracked') || !p.paypal.captureId) {
       throw new LeashError('conflict', `Proposal is ${p.status}; only captured purchases can be refunded`);
     }
-    const r = await this.d.paypal.refundCapture(p.paypal.captureId, `refund-${p.id}`);
-    return this.transition(p, 'refunded', 'owner', `Refund ${r.refundId} ${r.status}`, { paypal: { refundId: r.refundId } });
+    if (this.refunding.has(p.id)) throw new LeashError('conflict', 'Refund already in progress');
+    this.refunding.add(p.id);
+    try {
+      const r = await this.d.paypal.refundCapture(p.paypal.captureId, `refund-${p.id}`);
+      return this.transition(p, 'refunded', 'owner', `Refund ${r.refundId} ${r.status}`, { paypal: { refundId: r.refundId } });
+    } finally {
+      this.refunding.delete(p.id);
+    }
   }
 
   private async execute(p: Proposal): Promise<Proposal> {
@@ -114,9 +126,9 @@ export class Leash {
       return this.transition(p, 'failed', 'system', reason, { reasons: [reason] });
     }
 
-    let charged: Proposal;
+    let charge: { orderId: string; captureId: string };
     try {
-      const { orderId, captureId } = await this.d.paypal.chargeVaulted({
+      charge = await this.d.paypal.chargeVaulted({
         vaultId: m.vaultId,
         amountCents: p.input.priceCents,
         currency: p.input.currency,
@@ -124,23 +136,27 @@ export class Leash {
         referenceId: p.id,
         requestId: `order-${p.id}`,
       });
-      charged = this.transition(p, 'captured', 'paypal', `Order ${orderId}, capture ${captureId}`, {
-        paypal: { orderId, captureId },
-      });
     } catch (e) {
       const reason = (e as Error).message;
       return this.transition(p, 'failed', 'paypal', reason, { reasons: [reason] });
     }
+    const { orderId, captureId } = charge;
+    const charged = this.transition(p, 'captured', 'paypal', `Order ${orderId}, capture ${captureId}`, {
+      paypal: { orderId, captureId },
+    });
 
     const trackingNumber = `LEASH${p.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
     try {
-      await this.d.paypal.addTracking({
-        orderId: charged.paypal.orderId!, captureId: charged.paypal.captureId!, trackingNumber, carrier: 'USPS',
-      });
-      return this.transition(charged, 'tracked', 'paypal', `Tracking ${trackingNumber} (USPS)`, { paypal: { trackingNumber } });
+      await this.d.paypal.addTracking({ orderId, captureId, trackingNumber, carrier: 'USPS' });
     } catch (e) {
       this.event(charged, 'captured', 'paypal', `Tracking not attached: ${(e as Error).message}`);
       return charged;
     }
+    const current = this.proposal(p.id);
+    if (current.status !== 'captured') {
+      this.event(current, current.status, 'paypal', `Tracking ${trackingNumber} attached after status changed to ${current.status}`);
+      return current;
+    }
+    return this.transition(current, 'tracked', 'paypal', `Tracking ${trackingNumber} (USPS)`, { paypal: { ...current.paypal, trackingNumber } });
   }
 }
