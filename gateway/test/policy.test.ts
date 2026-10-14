@@ -91,4 +91,15 @@ describe('merchant normalization', () => {
     const m = mandate({ allowedMerchants: ['shop.example.com'] });
     expect(evaluatePolicy(m, proposal({ merchant: 'https://www.Shop.Example.com/item/1' }), fresh)).toEqual({ ok: true });
   });
+
+  it('fails closed on non-finite mandate or history numbers', () => {
+    const r = evaluatePolicy(mandate({ monthlyBudgetCents: NaN }), proposal(), fresh);
+    expect(reasonsOf(r)).toEqual(['Mandate or spend data is invalid']);
+    expect(reasonsOf(evaluatePolicy(mandate(), proposal(), { monthSpentCents: NaN, ordersToday: 0 }))).toEqual([
+      'Mandate or spend data is invalid',
+    ]);
+    expect(reasonsOf(evaluatePolicy(mandate({ maxOrdersPerDay: Infinity }), proposal(), fresh))).toEqual([
+      'Mandate or spend data is invalid',
+    ]);
+  });
 });

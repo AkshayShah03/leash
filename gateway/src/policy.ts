@@ -18,6 +18,9 @@ export function evaluatePolicy(m: Mandate, p: ProposalInput, h: SpendHistory): R
   if (!Number.isInteger(p.priceCents) || p.priceCents <= 0) {
     return { ok: false, reasons: ['Price must be a positive whole number of cents'] };
   }
+  if (![m.perOrderCapCents, m.monthlyBudgetCents, h.monthSpentCents, m.maxOrdersPerDay, h.ordersToday].every(Number.isFinite)) {
+    return { ok: false, reasons: ['Mandate or spend data is invalid'] };
+  }
   const reasons: string[] = [];
 
   if (p.currency !== m.currency) {
