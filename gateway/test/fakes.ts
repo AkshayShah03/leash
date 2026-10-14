@@ -1,3 +1,4 @@
+import type { ChargeArgs, ChargeResult, PayPalApi, TrackingArgs } from '../src/paypal/api';
 import type { Mandate, ProposalInput } from '../src/types';
 
 export function mandate(overrides: Partial<Mandate> = {}): Mandate {
@@ -29,4 +30,28 @@ export function proposal(overrides: Partial<ProposalInput> = {}): ProposalInput 
     userRequest: 'I need an ergonomic keyboard',
     ...overrides,
   };
+}
+
+export class FakePayPal implements PayPalApi {
+  charges: ChargeArgs[] = [];
+  refunds: Array<{ captureId: string; requestId: string }> = [];
+  tracking: TrackingArgs[] = [];
+  failCharge: Error | null = null;
+  failTracking: Error | null = null;
+
+  async chargeVaulted(a: ChargeArgs): Promise<ChargeResult> {
+    if (this.failCharge) throw this.failCharge;
+    this.charges.push(a);
+    return { orderId: `ORDER-${this.charges.length}`, captureId: `CAP-${this.charges.length}` };
+  }
+
+  async refundCapture(captureId: string, requestId: string) {
+    this.refunds.push({ captureId, requestId });
+    return { refundId: `REF-${captureId}`, status: 'COMPLETED' };
+  }
+
+  async addTracking(a: TrackingArgs) {
+    if (this.failTracking) throw this.failTracking;
+    this.tracking.push(a);
+  }
 }
