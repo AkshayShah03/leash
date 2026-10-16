@@ -20,4 +20,14 @@ describe('EventBus', () => {
     expect(() => bus.publish(ev('m1'))).not.toThrow();
     expect(ok).toHaveBeenCalled();
   });
+  it('unsubscribe is idempotent and never evicts a newer subscriber', () => {
+    const bus = new EventBus();
+    const a = vi.fn(); const b = vi.fn();
+    const unA = bus.subscribe('m1', a);
+    unA();
+    bus.subscribe('m1', b);
+    unA();
+    bus.publish(ev('m1'));
+    expect(b).toHaveBeenCalledTimes(1);
+  });
 });

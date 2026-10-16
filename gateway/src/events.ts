@@ -13,6 +13,12 @@ export class EventBus {
     const set = this.subs.get(mandateId) ?? new Set();
     set.add(fn);
     this.subs.set(mandateId, set);
-    return () => { set.delete(fn); if (set.size === 0) this.subs.delete(mandateId); };
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      set.delete(fn);
+      if (set.size === 0 && this.subs.get(mandateId) === set) this.subs.delete(mandateId);
+    };
   }
 }

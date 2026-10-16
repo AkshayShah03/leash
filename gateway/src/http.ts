@@ -6,7 +6,7 @@ import { z } from 'zod';
 import type { EventBus } from './events';
 import { Leash, LeashError } from './leash';
 import type { VaultApi } from './paypal/api';
-import { SESSION_COOKIE, signSession, verifySession } from './session';
+import { SESSION_COOKIE, SESSION_TTL_MS, signSession, verifySession } from './session';
 import type { Store } from './store';
 import type { LedgerEvent, Mandate, ProposalStatus } from './types';
 
@@ -47,7 +47,7 @@ export interface AppDeps {
   events: EventBus;
   keys: { agent: string; owner: string };
   publicUrl: string;
-  session: { passcode: string; secret: string };
+  session: { passcode: string; secret: string; failureDelayMs?: number };
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -85,7 +85,7 @@ export function createApp(d: AppDeps) {
       const auth = authOf(c);
       if (!auth) return c.json({ error: 'unauthorized' }, 401);
       if (!roles.includes(auth.role)) return c.json({ error: 'forbidden' }, 403);
-      if (auth.via === 'cookie' && !roles.includes('agent') && c.req.method !== 'GET' && c.req.header('x-leash-csrf') !== '1')
+      if (auth.via === 'cookie' && c.req.method !== 'GET' && c.req.method !== 'HEAD' && c.req.header('x-leash-csrf') !== '1')
         return c.json({ error: 'csrf_required' }, 403);
       await next();
     };
@@ -106,9 +106,12 @@ export function createApp(d: AppDeps) {
 
   app.post('/api/session', async (c) => {
     const { passcode } = z.object({ passcode: z.string().max(500) }).parse(await c.req.json());
-    if (!timingSafeEqual(sha256(passcode), sha256(d.session.passcode))) return c.json({ error: 'invalid_passcode' }, 401);
+    if (!timingSafeEqual(sha256(passcode), sha256(d.session.passcode))) {
+      await new Promise((r) => setTimeout(r, d.session.failureDelayMs ?? 500));
+      return c.json({ error: 'invalid_passcode' }, 401);
+    }
     setCookie(c, SESSION_COOKIE, signSession(d.session.secret, Date.now()), {
-      httpOnly: true, sameSite: 'Strict', path: '/', maxAge: 43200, secure: d.publicUrl.startsWith('https://'),
+      httpOnly: true, sameSite: 'Strict', path: '/', maxAge: SESSION_TTL_MS / 1000, secure: d.publicUrl.startsWith('https://'),
     });
     return c.json({ ok: true });
   });

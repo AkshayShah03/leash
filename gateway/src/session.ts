@@ -3,7 +3,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 export const SESSION_COOKIE = 'leash_owner';
 const mac = (secret: string, payload: string) => createHmac('sha256', secret).update(payload).digest('hex');
 
-export function signSession(secret: string, now: number, ttlMs = 12 * 60 * 60 * 1000): string {
+export const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+
+export function signSession(secret: string, now: number, ttlMs = SESSION_TTL_MS): string {
   const exp = String(now + ttlMs);
   return `${exp}.${mac(secret, exp)}`;
 }

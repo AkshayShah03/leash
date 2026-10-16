@@ -23,6 +23,7 @@ if (agentKey === ownerKey) throw new Error('LEASH_AGENT_KEY and LEASH_OWNER_KEY 
 
 const uiPasscode = required('LEASH_UI_PASSCODE');
 const sessionSecret = required('LEASH_SESSION_SECRET');
+if (uiPasscode === ownerKey || uiPasscode === agentKey) throw new Error('LEASH_UI_PASSCODE must differ from LEASH_OWNER_KEY and LEASH_AGENT_KEY');
 if (uiPasscode.length < 8) throw new Error('LEASH_UI_PASSCODE must be at least 8 characters');
 if (sessionSecret.length < 32) throw new Error('LEASH_SESSION_SECRET must be at least 32 characters (e.g. `openssl rand -hex 32`)');
 
