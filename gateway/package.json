@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "dev": "tsx watch --env-file=.env src/server.ts",
     "start": "tsx src/server.ts",
+    "build:web": "npm --prefix ../web run build",
     "spike": "tsx --env-file=.env scripts/spike-vault.ts",
     "smoke:intent": "tsx --env-file=.env scripts/smoke-intent.ts",
     "smoke:scout": "tsx --env-file=.env scripts/smoke-scout.ts"
