@@ -206,7 +206,7 @@ describe('owner session', () => {
     expect(ok.status).toBe(200);
     const cookie = ok.headers.get('set-cookie')!;
     expect(cookie).toContain('HttpOnly');
-    expect(cookie).toContain('SameSite=Strict');
+    expect(cookie).toContain('SameSite=Lax');
     expect(cookie).toContain('Secure');
     const jar = cookie.split(';')[0];
     const create = (extra: Record<string, string>) =>

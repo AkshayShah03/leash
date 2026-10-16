@@ -144,7 +144,7 @@ export function createApp(d: AppDeps) {
       return c.json({ error: 'invalid_passcode' }, 401);
     }
     setCookie(c, SESSION_COOKIE, signSession(d.session.secret, Date.now()), {
-      httpOnly: true, sameSite: 'Strict', path: '/', maxAge: SESSION_TTL_MS / 1000, secure: d.publicUrl.startsWith('https://'),
+      httpOnly: true, sameSite: 'Lax', path: '/', maxAge: SESSION_TTL_MS / 1000, secure: d.publicUrl.startsWith('https://'),
     });
     return c.json({ ok: true });
   });
