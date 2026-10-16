@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/http';
+import { EventBus } from '../src/events';
 import { Leash } from '../src/leash';
 import { Store } from '../src/store';
 import type { VaultApi } from '../src/paypal/api';
@@ -11,12 +12,13 @@ const OWNER = 'Bearer owner-key';
 function setup() {
   const store = new Store();
   const paypal = new FakePayPal();
-  const leash = new Leash({ store, paypal, intent: async () => ({ score: 0.95, reason: 'ok' }) });
+  const bus = new EventBus();
+  const leash = new Leash({ store, paypal, intent: async () => ({ score: 0.95, reason: 'ok' }), onEvent: (e) => bus.publish(e) });
   const vault: VaultApi = {
     createSetupToken: async (a) => ({ id: 'ST-1', approveUrl: `https://pp/approve?return=${encodeURIComponent(a.returnUrl)}` }),
     createPaymentToken: async (id) => ({ vaultId: `VAULT-for-${id}` }),
   };
-  const app = createApp({ leash, store, vault, keys: { agent: 'agent-key', owner: 'owner-key' }, publicUrl: 'https://leash.test' });
+  const app = createApp({ leash, store, vault, events: bus, keys: { agent: 'agent-key', owner: 'owner-key' }, publicUrl: 'https://leash.test' });
   // TS 7's lib types Response.json() as Promise<unknown>; the tests read arbitrary JSON bodies.
   type Res = Omit<Response, 'json'> & { json(): Promise<any> }; // eslint-disable-line @typescript-eslint/no-explicit-any
   const call = (method: string, path: string, auth?: string, body?: unknown): Promise<Res> | Res =>
@@ -148,5 +150,34 @@ describe('HTTP API', () => {
     expect((await s.call('GET', `/api/proposals/${p.id}`, AGENT)).status).toBe(200);
     expect((await s.call('GET', '/api/proposals/nope', AGENT)).status).toBe(404);
     expect((await s.call('GET', '/api/proposals', AGENT)).status).toBe(400);
+  });
+});
+
+describe('SSE', () => {
+  it('streams ledger events over SSE', { timeout: 5000 }, async () => {
+    const s = setup();
+    const m = await connectedMandate(s);
+    const res = await s.app.request(`/api/events?mandate=${m.id}`, { headers: { authorization: AGENT } });
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let text = '';
+    const readUntil = async (needle: string) => {
+      while (!text.includes(needle)) { const { value, done } = await reader.read(); if (done) break; text += dec.decode(value); }
+    };
+    try {
+      await readUntil('event: ready');
+      await s.call('POST', `/api/mandates/${m.id}/proposals`, AGENT, proposal());
+      await readUntil('"status":"tracked"');
+      expect(text).toContain('event: ledger');
+    } finally {
+      await reader.cancel();
+    }
+  });
+
+  it('requires the mandate query parameter and auth', async () => {
+    const s = setup();
+    expect((await s.call('GET', '/api/events', AGENT)).status).toBe(400);
+    expect((await s.call('GET', '/api/events?mandate=x')).status).toBe(401);
   });
 });

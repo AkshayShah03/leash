@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
 import { loadPayPalConfig } from './config';
+import { EventBus } from './events';
 import { createApp } from './http';
 import { makeIntentChecker } from './intent';
 import { llmGenerate } from './intent-llm';
@@ -23,11 +24,13 @@ if (agentKey === ownerKey) throw new Error('LEASH_AGENT_KEY and LEASH_OWNER_KEY 
 const port = Number(process.env.PORT ?? 8787);
 const paypal = new PayPalRest(new PayPalClient(loadPayPalConfig()));
 const store = new Store(process.env.LEASH_DB_PATH ?? 'leash.db');
-const leash = new Leash({ store, paypal, intent: makeIntentChecker(llmGenerate(), 15_000) });
+const events = new EventBus();
+const leash = new Leash({ store, paypal, intent: makeIntentChecker(llmGenerate(), 15_000), onEvent: (e) => events.publish(e) });
 const app = createApp({
   leash,
   store,
   vault: paypal,
+  events,
   keys: { agent: agentKey, owner: ownerKey },
   publicUrl: process.env.PUBLIC_URL ?? `http://localhost:${port}`,
 });

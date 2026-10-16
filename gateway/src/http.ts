@@ -1,10 +1,12 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Hono, type MiddlewareHandler } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
+import type { EventBus } from './events';
 import { Leash, LeashError } from './leash';
 import type { VaultApi } from './paypal/api';
 import type { Store } from './store';
-import type { Mandate, ProposalStatus } from './types';
+import type { LedgerEvent, Mandate, ProposalStatus } from './types';
 
 export const mandateInputSchema = z.object({
   goal: z.string().min(1).max(500),
@@ -40,6 +42,7 @@ export interface AppDeps {
   leash: Leash;
   store: Store;
   vault: VaultApi;
+  events: EventBus;
   keys: { agent: string; owner: string };
   publicUrl: string;
 }
@@ -146,6 +149,33 @@ export function createApp(d: AppDeps) {
   app.post('/api/proposals/:id/refund', allow('owner'), async (c) => c.json(await d.leash.refund(c.req.param('id'))));
 
   app.get('/api/ledger', allow('agent', 'owner'), (c) => c.json(d.store.listEvents(c.req.query('mandate'))));
+
+  app.get('/api/events', allow('agent', 'owner'), (c) => {
+    const mandateId = c.req.query('mandate');
+    if (!mandateId) return c.json({ error: 'mandate query parameter is required' }, 400);
+    requireMandate(mandateId);
+    return streamSSE(c, async (stream) => {
+      const queue: LedgerEvent[] = [];
+      let wake: (() => void) | null = null;
+      const unsubscribe = d.events.subscribe(mandateId, (e) => { queue.push(e); wake?.(); });
+      stream.onAbort(() => { unsubscribe(); wake?.(); });
+      try {
+        await stream.writeSSE({ event: 'ready', data: '{}' });
+        while (!stream.aborted) {
+          while (queue.length) await stream.writeSSE({ event: 'ledger', data: JSON.stringify(queue.shift()) });
+          if (stream.aborted) break;
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(done, 25_000);
+            function done() { clearTimeout(timer); wake = null; resolve(); }
+            wake = done;
+          });
+          if (!queue.length && !stream.aborted) await stream.writeSSE({ event: 'ping', data: '{}' });
+        }
+      } finally {
+        unsubscribe();
+      }
+    });
+  });
 
   return app;
 }
