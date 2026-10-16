@@ -11,6 +11,7 @@ export default function ProductCard({ product }: { product: ProductSummary }) {
   const img = safeHref(product.imageUrl);
   const offer = cheapestOffer(product);
   const href = safeHref(offer?.url);
+  const outOfStock = !!offer && !product.offers.some((o) => /in.?stock/i.test(o.availability));
   return (
     <article className="pcard">
       <div className="pcard__img">
@@ -20,6 +21,7 @@ export default function ProductCard({ product }: { product: ProductSummary }) {
       {product.brand && <p className="pcard__brand">{product.brand}</p>}
       <div className="pcard__foot">
         <span className="pcard__price">{offer ? formatUsd(offer.priceCents) : 'No offers'}</span>
+        {outOfStock && <span className="pcard__oos">Out of stock</span>}
         {href && (
           <a className="pcard__link" href={href} target="_blank" rel="noopener noreferrer" aria-label={`View ${product.title}`}>
             View

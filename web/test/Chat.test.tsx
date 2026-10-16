@@ -56,7 +56,7 @@ describe('Chat', () => {
     expect(onReviewApprovals).toHaveBeenCalled();
     expect(onProposalsChanged).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Compare in table' }));
-    expect(screen.getByText('grid')).toBeInTheDocument();
+    expect(await screen.findByText('grid')).toBeInTheDocument();
   });
 
   it('disables composer and shows typing text while in flight', async () => {
@@ -87,5 +87,55 @@ describe('Chat', () => {
     fireEvent.click(screen.getByRole('button', { name: /New chat/ }));
     expect(screen.queryByText('ok')).toBeNull();
     expect(screen.getByText('What should Scout find for you?')).toBeInTheDocument();
+  });
+
+  it('renders live proposal status and hides Review once decided', async () => {
+    vi.spyOn(api, 'chat').mockResolvedValue(result);
+    const view = render(<Chat mandateId="m1" liveProposals={[]} onProposalsChanged={vi.fn()} onReviewApprovals={vi.fn()} />);
+    await type('kb');
+    expect(await screen.findByRole('button', { name: 'Review in Approvals' })).toBeInTheDocument();
+    view.rerender(<Chat mandateId="m1" liveProposals={[proposal({ status: 'human_approved' })]} onProposalsChanged={vi.fn()} onReviewApprovals={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Review in Approvals' })).toBeNull();
+    expect(screen.queryByText('Needs your OK')).toBeNull();
+  });
+
+  it('shows fallback for empty reply', async () => {
+    vi.spyOn(api, 'chat').mockResolvedValue({ text: '', products: [], proposals: [] });
+    setup();
+    await type('hi');
+    expect(await screen.findByText('(no reply)')).toBeInTheDocument();
+  });
+
+  it('history window starts with a user message', async () => {
+    const chat = vi.spyOn(api, 'chat').mockResolvedValue({ text: 'r', products: [], proposals: [] });
+    setup();
+    for (let i = 0; i < 11; i++) {
+      await type(`m${i}`);
+      await waitFor(() => expect(screen.getByLabelText('Message Scout')).toBeEnabled());
+    }
+    // 11 user + 10 assistant = 21 messages before last call's slice? last call sent 21 -> slice(-20) starts with assistant
+    const last = chat.mock.calls[chat.mock.calls.length - 1][0].messages;
+    expect(last[0].role).toBe('user');
+    expect(last.length).toBe(19);
+  });
+
+  it('retry only for 502 and network errors', async () => {
+    const chat = vi.spyOn(api, 'chat').mockRejectedValue(new ApiError(404, 'gone'));
+    setup();
+    await type('hi');
+    await screen.findByText(/no longer exist/);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /New chat/ }));
+    chat.mockRejectedValue(new TypeError('network'));
+    await type('hi');
+    expect(await screen.findByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('restores composer focus after a request finishes', async () => {
+    vi.spyOn(api, 'chat').mockResolvedValue({ text: 'ok', products: [], proposals: [] });
+    setup();
+    await type('hi');
+    await screen.findByText('ok');
+    await waitFor(() => expect(screen.getByLabelText('Message Scout')).toHaveFocus());
   });
 });

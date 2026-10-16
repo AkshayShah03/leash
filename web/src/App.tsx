@@ -121,6 +121,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
               <Chat
                 key={mandateId}
                 mandateId={mandateId}
+                liveProposals={proposals}
                 onProposalsChanged={() => { void loadProposals(); }}
                 onReviewApprovals={() => setTab('approvals')}
               />

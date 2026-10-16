@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowUp, MessageSquarePlus, Sparkles } from 'lucide-react';
 import { ApiError, api } from '../lib/api';
 import { formatUsd } from '../lib/format';
 import type { ChatMessage, ProductSummary, Proposal } from '../lib/types';
 import ScoutText from '../components/ScoutText';
 import ProductCard from '../components/ProductCard';
-import ProductGrid from '../components/ProductGrid';
 import StatusChip from '../components/StatusChip';
 
 const SUGGESTIONS = [
@@ -13,6 +12,7 @@ const SUGGESTIONS = [
   'Find a USB-C hub for my laptop',
   'Get me a headset for work calls',
 ];
+const ProductGrid = lazy(() => import('../components/ProductGrid'));
 const MAX_LEN = 4000;
 
 interface Turn {
@@ -22,12 +22,20 @@ interface Turn {
   products?: ProductSummary[];
   proposals?: Proposal[];
   error?: boolean;
+  retryable?: boolean;
 }
 
 interface Props {
   mandateId: string;
+  liveProposals?: Proposal[];
   onProposalsChanged: () => void;
   onReviewApprovals: () => void;
+}
+
+function windowed(h: ChatMessage[]): ChatMessage[] {
+  const w = h.slice(-20);
+  const i = w.findIndex((m) => m.role === 'user');
+  return i === -1 ? [] : w.slice(i);
 }
 
 function ProposalCard({ p, onReview }: { p: Proposal; onReview: () => void }) {
@@ -65,12 +73,16 @@ function Products({ products }: { products: ProductSummary[] }) {
       <button type="button" className="linkbtn" aria-expanded={table} onClick={() => setTable((t) => !t)}>
         {table ? 'Hide table' : 'Compare in table'}
       </button>
-      {table && <ProductGrid products={products} />}
+      {table && (
+        <Suspense fallback={<div className="grid-loading">Loading table…</div>}>
+          <ProductGrid products={products} />
+        </Suspense>
+      )}
     </div>
   );
 }
 
-export default function Chat({ mandateId, onProposalsChanged, onReviewApprovals }: Props) {
+export default function Chat({ mandateId, liveProposals = [], onProposalsChanged, onReviewApprovals }: Props) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -80,14 +92,24 @@ export default function Chat({ mandateId, onProposalsChanged, onReviewApprovals 
   const gen = useRef(0);
   const endRef = useRef<HTMLDivElement>(null);
   const lastSent = useRef('');
+  const inFlight = useRef(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const wasBusy = useRef(false);
 
   useEffect(() => {
+    if (wasBusy.current && !busy) inputRef.current?.focus();
+    wasBusy.current = busy;
+  }, [busy]);
+
+  useEffect(() => {
+    if (turns.length === 0) return;
     endRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' });
   }, [turns, busy]);
 
   async function send(text: string, retry = false) {
     const content = text.trim();
-    if (!content || busy || content.length > MAX_LEN) return;
+    if (!content || busy || inFlight.current || content.length > MAX_LEN) return;
+    inFlight.current = true;
     const my = gen.current;
     lastSent.current = content;
     if (!retry) {
@@ -99,10 +121,10 @@ export default function Chat({ mandateId, onProposalsChanged, onReviewApprovals 
     }
     setBusy(true);
     try {
-      const res = await api.chat({ mandateId, conversationId, messages: history.current.slice(-20) });
+      const res = await api.chat({ mandateId, conversationId, messages: windowed(history.current) });
       if (my !== gen.current) return;
       history.current = [...history.current, { role: 'assistant', content: res.text || '(no reply)' }];
-      setTurns((t) => [...t, { id: nextId.current++, role: 'assistant', text: res.text, products: res.products, proposals: res.proposals }]);
+      setTurns((t) => [...t, { id: nextId.current++, role: 'assistant', text: res.text || '(no reply)', products: res.products, proposals: res.proposals }]);
     } catch (e) {
       if (my !== gen.current) return;
       const msg =
@@ -113,9 +135,13 @@ export default function Chat({ mandateId, onProposalsChanged, onReviewApprovals 
             : e instanceof ApiError
               ? 'That message could not be sent.'
               : 'Could not reach the server.';
-      setTurns((t) => [...t, { id: nextId.current++, role: 'assistant', text: msg, error: true }]);
+      const retryable = !(e instanceof ApiError) || e.status === 502;
+      setTurns((t) => [...t, { id: nextId.current++, role: 'assistant', text: msg, error: true, retryable }]);
     } finally {
-      if (my === gen.current) setBusy(false);
+      if (my === gen.current) {
+        inFlight.current = false;
+        setBusy(false);
+      }
       onProposalsChanged();
     }
   }
@@ -125,8 +151,10 @@ export default function Chat({ mandateId, onProposalsChanged, onReviewApprovals 
     history.current = [];
     setTurns([]);
     setDraft('');
+    inFlight.current = false;
     setBusy(false);
     setConversationId(crypto.randomUUID());
+    inputRef.current?.focus();
   }
 
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -135,8 +163,6 @@ export default function Chat({ mandateId, onProposalsChanged, onReviewApprovals 
       void send(draft);
     }
   }
-
-  const lastIsError = turns.length > 0 && turns[turns.length - 1].error;
 
   return (
     <section className="chat" aria-label="Chat with Scout">
@@ -170,14 +196,14 @@ export default function Chat({ mandateId, onProposalsChanged, onReviewApprovals 
                   <div className={`scard ${t.error ? 'scard--error' : ''}`} role={t.error ? 'alert' : undefined}>
                     <span className="scard__label">Scout</span>
                     {t.error ? <p>{t.text}</p> : <ScoutText text={t.text} />}
-                    {t.error && (
+                    {t.error && t.retryable && (
                       <button type="button" className="linkbtn" disabled={busy} onClick={() => void send(lastSent.current, true)}>Retry</button>
                     )}
                   </div>
                   {t.products && t.products.length > 0 && <Products products={t.products} />}
                   {t.proposals && t.proposals.length > 0 && (
                     <div className="rlist">
-                      {t.proposals.map((p) => <ProposalCard key={p.id} p={p} onReview={onReviewApprovals} />)}
+                      {t.proposals.map((p) => <ProposalCard key={p.id} p={liveProposals.find((x) => x.id === p.id) ?? p} onReview={onReviewApprovals} />)}
                     </div>
                   )}
                 </div>
@@ -203,6 +229,7 @@ export default function Chat({ mandateId, onProposalsChanged, onReviewApprovals 
           <label htmlFor="chat-input" className="sr-only">Message Scout</label>
           <textarea
             id="chat-input"
+            ref={inputRef}
             rows={2}
             value={draft}
             maxLength={MAX_LEN}
@@ -218,7 +245,6 @@ export default function Chat({ mandateId, onProposalsChanged, onReviewApprovals 
             </button>
           </div>
         </div>
-        {lastIsError && <span className="sr-only">Last message failed</span>}
       </form>
     </section>
   );
