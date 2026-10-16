@@ -306,3 +306,23 @@ describe('Leash charge retry', () => {
     expect(p.reasons).toEqual([err.message]);
   });
 });
+
+describe('idempotent propose', () => {
+  it('returns the same proposal for a repeated key without re-charging', async () => {
+    const { leash, m, paypal, statuses } = setup();
+    const a = await leash.propose(m.id, proposal(), { idempotencyKey: 'k1' });
+    const b = await leash.propose(m.id, proposal(), { idempotencyKey: 'k1' });
+    expect(b.id).toBe(a.id);
+    expect(paypal.charges).toHaveLength(1);
+    expect(statuses().filter((s) => s === 'proposed')).toHaveLength(1);
+  });
+  it('concurrent proposals with the same key create one proposal', async () => {
+    const { leash, m, paypal } = setup();
+    const [a, b] = await Promise.all([
+      leash.propose(m.id, proposal(), { idempotencyKey: 'k2' }),
+      leash.propose(m.id, proposal(), { idempotencyKey: 'k2' }),
+    ]);
+    expect(b.id).toBe(a.id);
+    expect(paypal.charges).toHaveLength(1);
+  });
+});

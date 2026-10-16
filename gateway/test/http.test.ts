@@ -127,4 +127,26 @@ describe('HTTP API', () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'invalid_json' });
   });
+
+  it('lists and fetches proposals; replays idempotent proposals with 200', async () => {
+    const s = setup();
+    const m = await connectedMandate(s);
+    const post = (key?: string) =>
+      s.app.request(`/api/mandates/${m.id}/proposals`, {
+        method: 'POST',
+        headers: { authorization: AGENT, 'content-type': 'application/json', ...(key ? { 'idempotency-key': key } : {}) },
+        body: JSON.stringify(proposal()),
+      });
+    const first = await post('idem-1');
+    expect(first.status).toBe(201);
+    const p = (await first.json()) as { id: string };
+    const again = await post('idem-1');
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as { id: string }).id).toBe(p.id);
+    const list = (await (await s.call('GET', `/api/proposals?mandate=${m.id}`, AGENT)).json()) as Array<{ id: string }>;
+    expect(list.map((x) => x.id)).toEqual([p.id]);
+    expect((await s.call('GET', `/api/proposals/${p.id}`, AGENT)).status).toBe(200);
+    expect((await s.call('GET', '/api/proposals/nope', AGENT)).status).toBe(404);
+    expect((await s.call('GET', '/api/proposals', AGENT)).status).toBe(400);
+  });
 });

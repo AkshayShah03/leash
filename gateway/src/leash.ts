@@ -81,9 +81,14 @@ export class Leash {
     return this.transition(p, status, actor, detail, { ...patch, committedAt: p.committedAt ?? this.now().toISOString() });
   }
 
-  async propose(mandateId: string, input: ProposalInput): Promise<Proposal> {
+  async propose(mandateId: string, input: ProposalInput, opts: { idempotencyKey?: string } = {}): Promise<Proposal> {
+    // Lookup + create stay synchronous (no await between) so concurrent retries cannot both create.
+    if (opts.idempotencyKey) {
+      const existing = this.d.store.findByIdempotencyKey(mandateId, opts.idempotencyKey);
+      if (existing) return existing;
+    }
     const m = this.mandate(mandateId);
-    const p = this.d.store.createProposal(mandateId, input, this.now());
+    const p = this.d.store.createProposal(mandateId, input, this.now(), opts.idempotencyKey);
     this.event(p, 'proposed', 'agent', `${input.title} from ${input.merchant}`);
 
     const rule = evaluatePolicy(m, input, this.d.store.spendHistory(mandateId, this.now(), p.id));

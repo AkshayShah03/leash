@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { Leash, LeashError } from './leash';
 import type { VaultApi } from './paypal/api';
 import type { Store } from './store';
-import type { Mandate } from './types';
+import type { Mandate, ProposalStatus } from './types';
 
 export const mandateInputSchema = z.object({
   goal: z.string().min(1).max(500),
@@ -29,6 +29,10 @@ export const proposalInputSchema = z.object({
   productUrl: z.string().url().optional(),
   userRequest: z.string().min(1).max(1000),
 });
+
+const PROPOSAL_STATUSES = [
+  'proposed', 'auto_approved', 'pending_human', 'denied', 'human_approved', 'captured', 'tracked', 'refunded', 'failed',
+] as const satisfies readonly ProposalStatus[];
 
 type Role = 'agent' | 'owner';
 
@@ -110,8 +114,26 @@ export function createApp(d: AppDeps) {
   });
 
   app.post('/api/mandates/:id/proposals', allow('agent', 'owner'), async (c) => {
-    const p = await d.leash.propose(c.req.param('id'), proposalInputSchema.parse(await c.req.json()));
+    const id = c.req.param('id');
+    const key = z.string().min(1).max(200).optional().parse(c.req.header('idempotency-key'));
+    const input = proposalInputSchema.parse(await c.req.json());
+    const replay = key ? d.store.findByIdempotencyKey(id, key) : undefined;
+    if (replay) return c.json(replay, 200);
+    const p = await d.leash.propose(id, input, { idempotencyKey: key });
     return c.json(p, 201);
+  });
+
+  app.get('/api/proposals', allow('agent', 'owner'), (c) => {
+    const { mandate, status } = z
+      .object({ mandate: z.string().min(1), status: z.enum(PROPOSAL_STATUSES).optional() })
+      .parse({ mandate: c.req.query('mandate'), status: c.req.query('status') });
+    return c.json(d.store.listProposals(mandate, status));
+  });
+
+  app.get('/api/proposals/:id', allow('agent', 'owner'), (c) => {
+    const p = d.store.getProposal(c.req.param('id'));
+    if (!p) throw new LeashError('not_found', `Proposal ${c.req.param('id')} not found`);
+    return c.json(p);
   });
 
   app.post('/api/proposals/:id/approve', allow('owner'), async (c) => c.json(await d.leash.approve(c.req.param('id'))));

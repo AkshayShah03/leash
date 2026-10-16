@@ -85,4 +85,23 @@ describe('Store', () => {
     const { store, m } = setup();
     expect(store.createProposal(m.id, proposal(), new Date()).committedAt).toBeNull();
   });
+
+  it('lists proposals newest first, optionally by status', () => {
+    const { store, m } = setup();
+    const a = store.createProposal(m.id, proposal({ title: 'A' }), new Date('2026-10-20T10:00:00Z'));
+    const b = store.createProposal(m.id, proposal({ title: 'B' }), new Date('2026-10-20T11:00:00Z'));
+    store.updateProposal(a.id, { status: 'pending_human' });
+    expect(store.listProposals(m.id).map((p) => p.input.title)).toEqual(['B', 'A']);
+    expect(store.listProposals(m.id, 'pending_human').map((p) => p.id)).toEqual([a.id]);
+    expect(store.listProposals('other')).toEqual([]);
+    expect(b.id).toBeTruthy();
+  });
+
+  it('finds proposals by idempotency key per mandate', () => {
+    const { store, m } = setup();
+    const p = store.createProposal(m.id, proposal(), new Date(), 'key-1');
+    expect(store.findByIdempotencyKey(m.id, 'key-1')?.id).toBe(p.id);
+    expect(store.findByIdempotencyKey('other', 'key-1')).toBeUndefined();
+    expect(() => store.createProposal(m.id, proposal(), new Date(), 'key-1')).toThrow();
+  });
 });

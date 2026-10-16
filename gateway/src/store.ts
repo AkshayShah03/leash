@@ -31,6 +31,10 @@ export class Store {
     this.db.exec(SCHEMA);
     const cols = this.db.prepare('PRAGMA table_info(proposals)').all() as Array<{ name: string }>;
     if (!cols.some((c) => c.name === 'committed_at')) this.db.exec('ALTER TABLE proposals ADD COLUMN committed_at TEXT');
+    if (!cols.some((c) => c.name === 'idempotency_key')) this.db.exec('ALTER TABLE proposals ADD COLUMN idempotency_key TEXT');
+    this.db.exec(
+      'CREATE UNIQUE INDEX IF NOT EXISTS proposals_idem ON proposals (mandate_id, idempotency_key) WHERE idempotency_key IS NOT NULL',
+    );
   }
 
   createMandate(input: MandateInput): Mandate {
@@ -52,15 +56,31 @@ export class Store {
     return next;
   }
 
-  createProposal(mandateId: string, input: ProposalInput, at: Date): Proposal {
+  createProposal(mandateId: string, input: ProposalInput, at: Date, idempotencyKey?: string): Proposal {
     const p: Proposal = {
       id: randomUUID(), mandateId, input, status: 'proposed', reasons: [], intent: null, paypal: {},
       createdAt: at.toISOString(), committedAt: null,
     };
     this.db
-      .prepare('INSERT INTO proposals (id, mandate_id, status, price_cents, created_at, data) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(p.id, mandateId, p.status, Number.isFinite(input.priceCents) ? input.priceCents : 0, p.createdAt, JSON.stringify(p));
+      .prepare('INSERT INTO proposals (id, mandate_id, status, price_cents, created_at, idempotency_key, data) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(p.id, mandateId, p.status, Number.isFinite(input.priceCents) ? input.priceCents : 0, p.createdAt, idempotencyKey ?? null, JSON.stringify(p));
     return p;
+  }
+
+  listProposals(mandateId: string, status?: ProposalStatus): Proposal[] {
+    const rows = (
+      status
+        ? this.db.prepare('SELECT data FROM proposals WHERE mandate_id = ? AND status = ? ORDER BY created_at DESC, rowid DESC').all(mandateId, status)
+        : this.db.prepare('SELECT data FROM proposals WHERE mandate_id = ? ORDER BY created_at DESC, rowid DESC').all(mandateId)
+    ) as Array<{ data: string }>;
+    return rows.map((r) => JSON.parse(r.data) as Proposal);
+  }
+
+  findByIdempotencyKey(mandateId: string, key: string): Proposal | undefined {
+    const row = this.db.prepare('SELECT data FROM proposals WHERE mandate_id = ? AND idempotency_key = ?').get(mandateId, key) as
+      | { data: string }
+      | undefined;
+    return row ? (JSON.parse(row.data) as Proposal) : undefined;
   }
 
   getProposal(id: string): Proposal | undefined {
