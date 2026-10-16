@@ -6,7 +6,7 @@ services:
     runtime: node
     plan: 0.5c-512mb         # paid (legacy name: starter); required for the persistent disk
     numInstances: 1          # live events are in-memory: keep a single instance
-    buildCommand: cd web && npm ci && npm run build && cd ../gateway && npm ci
+    buildCommand: cd web && npm ci --include=dev && npm run build && cd ../gateway && npm ci
     startCommand: cd gateway && npm start
     healthCheckPath: /healthz
     disk:
