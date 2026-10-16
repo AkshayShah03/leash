@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { secureHeaders } from 'hono/secure-headers';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import type { EventBus } from './events';
@@ -98,6 +99,20 @@ function publicMandate(m: Mandate) {
 
 export function createApp(d: AppDeps) {
   const app = new Hono();
+
+  app.use(
+    '*',
+    secureHeaders({
+      contentSecurityPolicy: {
+        defaultSrc: ["'self'"],
+        imgSrc: ["'self'", 'https:', 'data:'],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        connectSrc: ["'self'"],
+        frameAncestors: ["'none'"],
+      },
+    }),
+  );
 
   app.get('/healthz', (c) => c.json({ ok: true })); // unauthenticated liveness probe for Render
 
@@ -272,6 +287,13 @@ export function createApp(d: AppDeps) {
     const root = d.webRoot;
     const isServerPath = (p: string) => p === '/api' || p.startsWith('/api/') || p === '/paypal' || p.startsWith('/paypal/');
     const isAssetLike = (p: string) => (p.split('/').pop() ?? '').includes('.');
+    // Never serve dotfiles or traversal segments, even if one ends up inside webRoot.
+    const isHidden = (p: string) => {
+      let decoded = p;
+      try { decoded = decodeURIComponent(p); } catch { return true; }
+      return decoded.split(/[\\/]/).some((seg) => seg.startsWith('.'));
+    };
+    app.get('*', async (c, next) => (isHidden(c.req.path) ? c.json({ error: 'not_found' }, 404) : next()));
     const files = serveStatic({ root });
     const index = serveStatic({ root, rewriteRequestPath: () => '/index.html' });
     app.get('*', async (c, next) => (isServerPath(c.req.path) ? next() : files(c, next)));

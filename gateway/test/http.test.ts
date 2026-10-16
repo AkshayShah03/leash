@@ -361,4 +361,46 @@ describe('UI endpoints', () => {
     expect(missing.status).toBe(404);
     expect(missing.headers.get('content-type')).toContain('application/json');
   });
+
+  describe('with a webRoot', () => {
+    function withWeb() {
+      const parent = mkdtempSync(join(tmpdir(), 'leash-trav-'));
+      const dir = join(parent, 'dist');
+      mkdirSync(join(dir, 'assets'), { recursive: true });
+      writeFileSync(join(dir, 'index.html'), '<h1>leash</h1>');
+      writeFileSync(join(parent, 'package.json'), '{"secret":"SECRET-PKG"}');
+      writeFileSync(join(parent, '.env'), 'SECRET=SECRET-ENV');
+      writeFileSync(join(dir, '.env'), 'SECRET=SECRET-ENV');
+      return setup(0, dir);
+    }
+
+    it('sends security headers including a CSP on the SPA shell', async () => {
+      const res = await withWeb().app.request('/');
+      expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+      const csp = res.headers.get('content-security-policy') ?? '';
+      expect(csp).toContain("default-src 'self'");
+      expect(csp).toContain("frame-ancestors 'none'");
+      expect(csp).toContain("img-src 'self' https: data:");
+      expect(csp).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com");
+      expect(csp).toContain("font-src 'self' https://fonts.gstatic.com");
+      expect(csp).toContain("connect-src 'self'");
+    });
+
+    it('sends security headers on API responses too', async () => {
+      const res = await withWeb().app.request('/api/ledger');
+      expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(res.headers.get('content-security-policy')).toBeTruthy();
+    });
+
+    it.each(['/../package.json', '/assets/..%2f..%2f.env', '/%2e%2e/.env', '/.env', '/%2e%2e%2fpackage.json', '/assets/../../package.json'])(
+      'never serves files outside or hidden under webRoot: %s',
+      async (path) => {
+        const res = await withWeb().app.request(path);
+        const body = await res.text();
+        expect(body).not.toContain('SECRET');
+        expect([400, 404]).toContain(res.status);
+        expect(res.headers.get('content-type') ?? '').toContain('application/json');
+      },
+    );
+  });
 });
