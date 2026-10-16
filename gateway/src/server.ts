@@ -31,15 +31,15 @@ if (uiPasscode === ownerKey || uiPasscode === agentKey) throw new Error('LEASH_U
 if (uiPasscode.length < 8) throw new Error('LEASH_UI_PASSCODE must be at least 8 characters');
 if (sessionSecret.length < 32) throw new Error('LEASH_SESSION_SECRET must be at least 32 characters (e.g. `openssl rand -hex 32`)');
 
-const port = Number(process.env.PORT ?? 8787);
+const port = Number(process.env.PORT || 8787);
 const paypal = new PayPalRest(new PayPalClient(loadPayPalConfig()));
-const store = new Store(process.env.LEASH_DB_PATH ?? 'leash.db');
+const store = new Store(process.env.LEASH_DB_PATH || 'leash.db');
 const events = new EventBus();
 const leash = new Leash({ store, paypal, intent: makeIntentChecker(llmGenerate(), 15_000), onEvent: (e) => events.publish(e) });
 const scoutDeps = {
   model: createOpenRouter({ apiKey: required('OPENROUTER_API_KEY') }).chat(process.env.SCOUT_MODEL || process.env.LEASH_MODEL || DEFAULT_MODEL),
   channel3: new Channel3Client({ apiKey: required('CHANNEL3_API_KEY') }),
-  gateway: new GatewayClient({ baseUrl: process.env.GATEWAY_INTERNAL_URL ?? `http://127.0.0.1:${port}`, agentKey }),
+  gateway: new GatewayClient({ baseUrl: process.env.GATEWAY_INTERNAL_URL || `http://127.0.0.1:${port}`, agentKey }),
 };
 const app = createApp({
   leash,
@@ -47,7 +47,7 @@ const app = createApp({
   vault: paypal,
   events,
   keys: { agent: agentKey, owner: ownerKey },
-  publicUrl: process.env.PUBLIC_URL ?? `http://localhost:${port}`,
+  publicUrl: process.env.PUBLIC_URL || `http://localhost:${port}`,
   session: { passcode: uiPasscode, secret: sessionSecret },
   scout: (args) => runScoutTurn(scoutDeps, args),
 });

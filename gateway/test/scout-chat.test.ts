@@ -39,6 +39,19 @@ describe('POST /api/scout/chat', () => {
     expect(await res.json()).toMatchObject({ text: 'Found it' });
     expect(stub).toHaveBeenCalledWith(body);
   });
+  it('does not route trailing-slash or double-slash chat paths to the stub', async () => {
+    const stub = vi.fn(async (_a: unknown) => ({ text: 'Found it', products: [], proposals: [] }));
+    const app = setup(stub);
+    const variants = ['/api/scout/chat/', '/api/scout//chat'];
+    for (const path of variants) {
+      const agent = await app.request(path, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer agent-key' }, body: JSON.stringify(body) });
+      expect(agent.status, `agent ${path}`).not.toBe(200);
+      expect(agent.status, `agent ${path}`).toBe(403);
+      const owner = await app.request(path, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer owner-key' }, body: JSON.stringify(body) });
+      expect(owner.status, `owner ${path}`).not.toBe(200);
+    }
+    expect(stub).not.toHaveBeenCalled();
+  });
   it('requires CSRF header for cookie sessions', async () => {
     const app = setup(async () => ({ text: 'x', products: [], proposals: [] }));
     const login = await app.request('/api/session', { method: 'POST', body: JSON.stringify({ passcode: 'demo-pass' }), headers: { 'content-type': 'application/json' } });
