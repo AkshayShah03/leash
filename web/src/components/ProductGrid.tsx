@@ -3,7 +3,7 @@ import { AgGridReact } from 'ag-grid-react';
 import type { ColDef } from 'ag-grid-community';
 import { gridTheme, gridThemeDark } from '../grid/theme';
 import { useIsDark } from '../lib/theme';
-import { formatUsd, safeHref } from '../lib/format';
+import { formatUsd } from '../lib/format';
 import type { ProductSummary } from '../lib/types';
 
 interface Row {
@@ -13,7 +13,6 @@ interface Row {
   priceCents: number;
   availability: string;
   category: string;
-  url: string | undefined;
 }
 
 export default function ProductGrid({ products }: { products: ProductSummary[] }) {
@@ -27,7 +26,6 @@ export default function ProductGrid({ products }: { products: ProductSummary[] }
           priceCents: o.priceCents,
           availability: o.availability,
           category: p.category,
-          url: safeHref(o.url),
         })),
       ),
     [products],

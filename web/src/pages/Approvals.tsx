@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ExternalLink, ShieldCheck, Sparkles, X } from 'lucide-react';
-import { ApiError, api } from '../lib/api';
+import { api } from '../lib/api';
+import { humanizeError } from '../lib/errors';
 import { formatUsd, safeHref } from '../lib/format';
 import type { Proposal } from '../lib/types';
 import EmptyState from '../components/EmptyState';
@@ -50,11 +51,7 @@ function ApprovalCard({ proposal, outcome, leaving, onChanged, onToast, onOutcom
         onOutcome({ proposal, kind: 'error', message: `Could not complete: ${res.reasons[0] ?? res.status}` });
       }
     } catch (e) {
-      let message: string;
-      if (e instanceof ApiError && e.status === 409) message = 'Already decided';
-      else if (e instanceof ApiError) message = e.code ? e.code : `Request failed (${e.status}). Try again.`;
-      else message = "Can't reach the gateway. Check your connection.";
-      onOutcome({ proposal, kind: 'error', message });
+      onOutcome({ proposal, kind: 'error', message: humanizeError(e, { conflict: 'Already decided' }) });
     } finally {
       inFlight.current = false;
       setBusy(false);

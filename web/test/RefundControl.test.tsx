@@ -46,9 +46,9 @@ describe('RefundControl', () => {
 
   it.each([
     [new ApiError(409), 'Already refunded or not refundable'],
-    [new ApiError(500), 'Request failed (500). Try again.'],
-    [new ApiError(400, 'bad_state'), 'bad_state'],
-    [new TypeError('fetch failed'), "Can't reach the gateway. Check your connection."],
+    [new ApiError(500), 'Something went wrong. Try again.'],
+    [new ApiError(400, 'bad_state'), 'Something went wrong. Try again.'],
+    [new TypeError('fetch failed'), "Can't reach the Leash server"],
   ])('maps errors %#', async (err, msg) => {
     vi.spyOn(api, 'refund').mockRejectedValue(err);
     const { onChanged, onToast } = setup();

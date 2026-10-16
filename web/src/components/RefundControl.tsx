@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Undo2 } from 'lucide-react';
-import { ApiError, api } from '../lib/api';
+import { api } from '../lib/api';
+import { humanizeError } from '../lib/errors';
 import { formatUsd } from '../lib/format';
 import type { Proposal } from '../lib/types';
 
@@ -8,12 +9,6 @@ interface Props {
   proposal: Proposal;
   onChanged: () => void;
   onToast: (msg: string) => void;
-}
-
-export function refundErrorMessage(e: unknown): string {
-  if (e instanceof ApiError && e.status === 409) return 'Already refunded or not refundable';
-  if (e instanceof ApiError) return e.code ? e.code : `Request failed (${e.status}). Try again.`;
-  return "Can't reach the gateway. Check your connection.";
 }
 
 export default function RefundControl({ proposal, onChanged, onToast }: Props) {
@@ -30,7 +25,7 @@ export default function RefundControl({ proposal, onChanged, onToast }: Props) {
       await api.refund(proposal.id);
       onToast(`Refunded ${price}`);
     } catch (e) {
-      onToast(refundErrorMessage(e));
+      onToast(humanizeError(e, { conflict: 'Already refunded or not refundable' }));
     } finally {
       inFlight.current = false;
       setBusy(false);

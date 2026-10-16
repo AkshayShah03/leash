@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, api } from '../src/lib/api';
+import { ApiError, api, setUnauthorizedHandler } from '../src/lib/api';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -107,5 +107,34 @@ describe('api', () => {
   it('tolerates an empty 2xx body', async () => {
     fetchMock.mockImplementation(async () => new Response(null, { status: 204 }));
     await expect(api.logout()).resolves.toBeUndefined();
+  });
+
+  describe('onUnauthorized', () => {
+    afterEach(() => setUnauthorizedHandler(null));
+
+    it('fires on a 401 from a normal call and still throws', async () => {
+      const fn = vi.fn();
+      setUnauthorizedHandler(fn);
+      fetchMock.mockImplementation(async () => json({ error: 'unauthorized' }, 401));
+      await expect(api.listMandates()).rejects.toMatchObject({ status: 401 });
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fire for the session endpoints (wrong passcode, initial check)', async () => {
+      const fn = vi.fn();
+      setUnauthorizedHandler(fn);
+      fetchMock.mockImplementation(async () => json({ error: 'invalid_passcode' }, 401));
+      await expect(api.login('x')).rejects.toBeInstanceOf(ApiError);
+      expect(await api.session()).toBe(false);
+      expect(fn).not.toHaveBeenCalled();
+    });
+
+    it('does not fire on other statuses', async () => {
+      const fn = vi.fn();
+      setUnauthorizedHandler(fn);
+      fetchMock.mockImplementation(async () => json({ error: 'forbidden' }, 403));
+      await expect(api.listMandates()).rejects.toBeInstanceOf(ApiError);
+      expect(fn).not.toHaveBeenCalled();
+    });
   });
 });

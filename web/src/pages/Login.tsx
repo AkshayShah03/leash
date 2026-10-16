@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { api, ApiError } from '../lib/api';
 
-export default function Login({ onSuccess }: { onSuccess: () => void }) {
+export default function Login({ onSuccess, notice }: { onSuccess: () => void; notice?: string | null }) {
   const [passcode, setPasscode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -25,6 +25,7 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
       <form className="login__card" onSubmit={submit}>
         <h1 className="login__brand">Leash</h1>
         <p className="login__tag">Agents need a leash before they get a wallet.</p>
+        {notice && <p role="status" className="notice">{notice}</p>}
         <label className="field">
           <span className="field__label">Passcode</span>
           <input

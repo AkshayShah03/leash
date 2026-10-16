@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../src/App';
 import { api } from '../src/lib/api';
@@ -61,4 +61,82 @@ describe('App session gate', () => {
     expect(screen.queryByLabelText('1 pending')).toBeNull();
   });
 
+
+  const mandate = {
+    id: 'm', goal: 'Goal M', currency: 'USD' as const, perOrderCapCents: 1000, monthlyBudgetCents: 5000,
+    allowedCategories: [], allowedMerchants: null, blockedMerchants: [], maxOrdersPerDay: 3,
+    reviewThreshold: 0.8, connected: true,
+  };
+  const proposal = (id: string) => ({
+    id, mandateId: 'm', status: 'pending_human' as const, reasons: [], intent: null, paypal: {},
+    createdAt: '2026-01-01T00:00:00Z', committedAt: null,
+    input: { title: id, description: '', category: 'Input Devices', merchant: 'x', priceCents: 500, currency: 'USD', userRequest: 'r' },
+  });
+  type Listener = () => void;
+  function stubEventSource() {
+    const listeners: Record<string, Listener[]> = {};
+    const inst: { onerror: null | (() => void) } = { onerror: null };
+    vi.stubGlobal('EventSource', class {
+      set onerror(f: () => void) { inst.onerror = f; }
+      addEventListener(n: string, f: Listener) { (listeners[n] ??= []).push(f); }
+      removeEventListener() {}
+      close() {}
+    });
+    return { emit: (n: string) => (listeners[n] ?? []).forEach((f) => f()), error: () => inst.onerror?.() };
+  }
+
+  it('returns to Login with a notice when any call hits 401', async () => {
+    vi.stubGlobal('EventSource', class { addEventListener() {} removeEventListener() {} close() {} });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+      url === '/api/session'
+        ? new Response('{}', { status: 200 })
+        : new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 })));
+    render(<App />);
+    expect(await screen.findByText('Your session expired — unlock again.')).toBeTruthy();
+    expect(screen.getByLabelText('Passcode')).toBeTruthy();
+  });
+
+  it('returns to Login when the SSE stream errors and the session is gone', async () => {
+    vi.spyOn(api, 'session').mockResolvedValueOnce(true).mockResolvedValue(false);
+    vi.spyOn(api, 'listMandates').mockResolvedValue([mandate]);
+    vi.spyOn(api, 'listProposals').mockResolvedValue([]);
+    const es = stubEventSource();
+    render(<App />);
+    await screen.findAllByText('Goal M');
+    await act(async () => { es.error(); });
+    expect(await screen.findByText('Your session expired — unlock again.')).toBeTruthy();
+  });
+
+  it('debounces SSE-triggered refetches by 150ms and drops out-of-order responses', async () => {
+    vi.spyOn(api, 'session').mockResolvedValue(true);
+    vi.spyOn(api, 'listMandates').mockResolvedValue([mandate]);
+    const resolvers: ((v: ReturnType<typeof proposal>[]) => void)[] = [];
+    const lp = vi.spyOn(api, 'listProposals').mockImplementation(
+      () => new Promise((r) => { resolvers.push(r as (typeof resolvers)[number]); }),
+    );
+    const es = stubEventSource();
+    render(<App />);
+    await screen.findAllByText('Goal M');
+    await waitFor(() => expect(lp).toHaveBeenCalledTimes(1));
+    resolvers[0]([]);
+    vi.useFakeTimers();
+    try {
+      lp.mockClear();
+      act(() => { es.emit('ledger'); es.emit('ledger'); es.emit('ledger'); });
+      await act(async () => { vi.advanceTimersByTime(149); });
+      expect(lp).not.toHaveBeenCalled();
+      await act(async () => { vi.advanceTimersByTime(2); });
+      expect(lp).toHaveBeenCalledTimes(1);
+      // second burst -> second request; resolve newer first, then the stale one
+      act(() => { es.emit('ledger'); });
+      await act(async () => { vi.advanceTimersByTime(150); });
+      expect(lp).toHaveBeenCalledTimes(2);
+      const [older, newer] = resolvers.slice(-2);
+      await act(async () => { newer([proposal('new-one')]); });
+      await act(async () => { older([]); });
+      expect(screen.getByLabelText('1 pending')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

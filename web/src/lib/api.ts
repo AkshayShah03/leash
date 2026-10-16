@@ -20,6 +20,12 @@ export class ApiError extends Error {
   }
 }
 
+let onUnauthorized: (() => void) | null = null;
+/** Registers the app-wide handler called when any API call (except the session endpoints) returns 401. */
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  onUnauthorized = fn;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
   if (method !== 'GET') headers['x-leash-csrf'] = '1';
@@ -38,6 +44,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     } catch {
       // non-JSON error body
     }
+    if (res.status === 401 && path !== '/api/session') onUnauthorized?.();
     throw new ApiError(res.status, code);
   }
   const text = await res.text();

@@ -60,7 +60,7 @@ export default function Ledger({ mandateId, proposals, onChanged, onToast }: Pro
     <div className="ledger">
       <section className="ltotals" aria-label="Totals">
         <div className="ltotal"><span className="ltotal__label">Bought this month (completed)</span><strong className="ltotal__value">{formatUsd(totals.boughtCents)}</strong></div>
-        <div className="ltotal"><span className="ltotal__label">Denied</span><strong className="ltotal__value">{totals.deniedCount}</strong></div>
+        <div className="ltotal"><span className="ltotal__label">Blocked (denied or failed)</span><strong className="ltotal__value">{totals.blockedCount}</strong></div>
         <div className="ltotal"><span className="ltotal__label">Refunded</span><strong className="ltotal__value">{formatUsd(totals.refundedCents)}</strong></div>
       </section>
 

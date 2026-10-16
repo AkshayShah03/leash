@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from './lib/api';
+import { api, setUnauthorizedHandler } from './lib/api';
 import { safeHref } from './lib/format';
 import { useLedgerEvents } from './lib/sse';
 import type { Proposal, PublicMandate } from './lib/types';
@@ -13,7 +13,10 @@ import Rules from './pages/Rules';
 
 type Gate = 'loading' | 'login' | 'app' | 'unreachable';
 
-function Shell({ onLogout }: { onLogout: () => void }) {
+const REFETCH_DEBOUNCE_MS = 150;
+const SESSION_EXPIRED = 'Your session expired — unlock again.';
+
+function Shell({ onLogout, onUnauthorized }: { onLogout: () => void; onUnauthorized: () => void }) {
   const [tab, setTab] = useState<Tab>('chat');
   const [mandates, setMandates] = useState<PublicMandate[] | null>(null);
   const [mandateId, setMandateId] = useState<string | null>(null);
@@ -22,9 +25,13 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   const [connecting, setConnecting] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
+  const seq = useRef({ mandates: 0, proposals: 0 });
+
   const loadMandates = useCallback(async () => {
+    const n = ++seq.current.mandates;
     try {
       const list = await api.listMandates();
+      if (n !== seq.current.mandates) return; // a newer request superseded this one
       setMandates(list);
       setLoadError(false);
       setMandateId((cur) => (cur && list.some((m) => m.id === cur) ? cur : list.length ? list[0].id : null));
@@ -41,8 +48,10 @@ function Shell({ onLogout }: { onLogout: () => void }) {
 
   const loadProposals = useCallback(async () => {
     if (!mandateId) return;
+    const n = ++seq.current.proposals;
     try {
       const list = await api.listProposals(mandateId);
+      if (n !== seq.current.proposals) return; // a newer request superseded this one
       if (activeId.current === mandateId) setProposals(list);
     } catch {
       // keep previous list; next event retries
@@ -67,11 +76,27 @@ function Shell({ onLogout }: { onLogout: () => void }) {
     return () => clearTimeout(t);
   }, [toast]);
 
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onEvent = useCallback(() => {
-    void loadProposals();
-    void loadMandates();
+    if (debounce.current) clearTimeout(debounce.current);
+    debounce.current = setTimeout(() => {
+      debounce.current = null;
+      void loadProposals();
+      void loadMandates();
+    }, REFETCH_DEBOUNCE_MS);
   }, [loadProposals, loadMandates]);
-  const { connected } = useLedgerEvents(mandateId, onEvent);
+  useEffect(() => () => { if (debounce.current) clearTimeout(debounce.current); }, []);
+
+  const checking = useRef(false);
+  const onStreamError = useCallback(() => {
+    if (checking.current) return;
+    checking.current = true;
+    api.session().then(
+      (ok) => { if (!ok) onUnauthorized(); },
+      () => { /* server unreachable; EventSource keeps retrying */ },
+    ).finally(() => { checking.current = false; });
+  }, [onUnauthorized]);
+  const { connected } = useLedgerEvents(mandateId, onEvent, onStreamError);
 
   const mandate = mandates?.find((m) => m.id === mandateId) ?? null;
   const pending = proposals.filter((p) => p.status === 'pending_human').length;
@@ -152,6 +177,13 @@ export default function App() {
   const [gate, setGate] = useState<Gate>('loading');
 
   const [attempt, setAttempt] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const expire = useCallback(() => { setNotice(SESSION_EXPIRED); setGate('login'); }, []);
+  useEffect(() => {
+    setUnauthorizedHandler(expire);
+    return () => setUnauthorizedHandler(null);
+  }, [expire]);
 
   useEffect(() => {
     let live = true;
@@ -169,6 +201,7 @@ export default function App() {
 
   async function logout() {
     try { await api.logout(); } catch { /* cookie may already be gone */ }
+    setNotice(null);
     setGate('login');
   }
 
@@ -184,6 +217,6 @@ export default function App() {
       </main>
     );
   }
-  if (gate === 'login') return <Login onSuccess={() => setGate('app')} />;
-  return <Shell onLogout={logout} />;
+  if (gate === 'login') return <Login notice={notice} onSuccess={() => { setNotice(null); setGate('app'); }} />;
+  return <Shell onLogout={logout} onUnauthorized={expire} />;
 }

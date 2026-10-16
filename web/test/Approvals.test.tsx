@@ -98,20 +98,20 @@ describe('Approvals', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Could not complete: failed');
   });
 
-  it('shows server message for other api errors', async () => {
+  it('shows a humanized message for other api errors', async () => {
     vi.spyOn(api, 'approve').mockRejectedValue(new ApiError(422, 'mandate_expired'));
     setup();
     fireEvent.click(screen.getByRole('button', { name: 'Approve Gaming Headset' }));
     const text = (await screen.findByRole('alert')).textContent ?? '';
-    expect(text).toContain('mandate_expired');
-    expect(text).not.toContain('Something went wrong');
+    expect(text).toContain('Something went wrong. Try again.');
+    expect(text).not.toContain('mandate_expired');
   });
 
   it('shows connectivity message on network errors', async () => {
     vi.spyOn(api, 'approve').mockRejectedValue(new TypeError('Failed to fetch'));
     setup();
     fireEvent.click(screen.getByRole('button', { name: 'Approve Gaming Headset' }));
-    expect((await screen.findByRole('alert')).textContent).toContain("Can't reach the gateway. Check your connection.");
+    expect((await screen.findByRole('alert')).textContent).toContain("Can't reach the Leash server");
   });
 
   it('sends one request for two same-tick clicks', async () => {

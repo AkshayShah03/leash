@@ -79,7 +79,7 @@ describe('Ledger page', () => {
     const spy = vi.spyOn(api, 'ledger').mockResolvedValue([]);
     render(<Ledger mandateId="m1" proposals={[proposal({ status: 'denied', id: 'p2' }), proposal({ status: 'refunded', id: 'p3' })]} onChanged={vi.fn()} onToast={vi.fn()} />);
     await waitFor(() => expect(spy).toHaveBeenCalledWith('m1'));
-    expect(screen.getByText('Denied', { selector: '.ltotal__label' })).toBeTruthy();
+    expect(screen.getByText('Blocked (denied or failed)', { selector: '.ltotal__label' })).toBeTruthy();
     expect(screen.getByText('Bought this month (completed)')).toBeTruthy();
     expect(screen.getByText('$59.99', { selector: '.ltotal__value' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Needs OK' }));

@@ -1,6 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { CheckCircle2, Link2, X } from 'lucide-react';
 import { api } from '../lib/api';
+import { humanizeError } from '../lib/errors';
 import { parseUsdToCents } from '../lib/format';
 import type { MandateInput, PublicMandate } from '../lib/types';
 
@@ -212,7 +213,7 @@ export default function Rules({ mandate = null, creating, onSaved, onConnect, co
         onSaved?.(saved, 'created');
       }
     } catch (ex) {
-      setServerError(ex instanceof Error && ex.message ? ex.message : 'Could not save your rules.');
+      setServerError(humanizeError(ex));
     } finally {
       inFlight.current = false;
       setSaving(false);

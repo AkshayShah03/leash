@@ -79,7 +79,7 @@ describe('Rules page', () => {
     await userEvent.type(cap, '75');
     await userEvent.click(save);
     expect(spy).toHaveBeenCalledWith('m1', { perOrderCapCents: 7500 });
-    expect((await screen.findByRole('alert')).textContent).toMatch(/must not exceed/);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/more than the monthly budget/);
   });
 
   it('chips add on Enter and remove with the x button; slider label is live', async () => {
