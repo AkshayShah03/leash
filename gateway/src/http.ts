@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { streamSSE } from 'hono/streaming';
@@ -51,6 +52,8 @@ export interface AppDeps {
   session: { passcode: string; secret: string; failureDelayMs?: number };
   /** Scout chat turn runner; when absent, /api/scout is not mounted. */
   scout?: RunScoutTurn;
+  /** Built SPA directory; when set, non-API GETs are served from it with an index.html fallback. */
+  webRoot?: string;
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -119,6 +122,12 @@ export function createApp(d: AppDeps) {
     return c.json({ ok: true });
   });
 
+  // Reports auth state, so it is deliberately not behind allow().
+  app.get('/api/session', (c) => {
+    if (authOf(c)?.role === 'owner') return c.json({ owner: true });
+    return c.json({ owner: false }, 401);
+  });
+
   app.delete('/api/session', (c) => {
     deleteCookie(c, SESSION_COOKIE, { path: '/' });
     return c.json({ ok: true });
@@ -127,6 +136,15 @@ export function createApp(d: AppDeps) {
   app.post('/api/mandates', allow('owner'), async (c) => {
     const m = d.store.createMandate(mandateInputSchema.parse(await c.req.json()));
     return c.json(publicMandate(m), 201);
+  });
+
+  app.get('/api/mandates', allow('owner'), (c) => c.json(d.store.listMandates().map(publicMandate)));
+
+  app.patch('/api/mandates/:id', allow('owner'), async (c) => {
+    const id = c.req.param('id');
+    const patch = mandateInputSchema.partial().strict().parse(await c.req.json());
+    requireMandate(id);
+    return c.json(publicMandate(d.store.updateMandateRules(id, patch)));
   });
 
   app.get('/api/mandates/:id', allow('agent', 'owner'), (c) => c.json(publicMandate(requireMandate(c.req.param('id')))));
@@ -141,11 +159,11 @@ export function createApp(d: AppDeps) {
 
   app.get('/paypal/return', async (c) => {
     const m = requireMandate(c.req.query('mandate') ?? '');
-    if (c.req.query('cancelled')) return c.html('<p>PayPal connection cancelled. You can close this tab.</p>');
+    if (c.req.query('cancelled')) return c.redirect('/?connect=cancelled', 302);
     if (!m.setupTokenId) throw new LeashError('conflict', 'No pending PayPal connection for this mandate');
     const { vaultId } = await d.vault.createPaymentToken(m.setupTokenId);
     d.store.updateMandate(m.id, { vaultId, setupTokenId: null });
-    return c.html('<p>PayPal connected. You can close this tab.</p>');
+    return c.redirect(`/?connected=${encodeURIComponent(m.id)}`, 302);
   });
 
   app.post('/api/mandates/:id/proposals', allow('agent', 'owner'), async (c) => {
@@ -213,6 +231,17 @@ export function createApp(d: AppDeps) {
     app.use('/api/scout/*', allow('owner'));
     app.route('/api/scout', createScoutRoute(d.scout, requireMandate));
   }
+
+  if (d.webRoot) {
+    const root = d.webRoot;
+    const isServerPath = (p: string) => p === '/api' || p.startsWith('/api/') || p === '/paypal' || p.startsWith('/paypal/');
+    const files = serveStatic({ root });
+    const index = serveStatic({ root, rewriteRequestPath: () => '/index.html' });
+    app.get('*', async (c, next) => (isServerPath(c.req.path) ? next() : files(c, next)));
+    app.get('*', async (c, next) => (isServerPath(c.req.path) ? next() : index(c, next)));
+  }
+
+  app.notFound((c) => c.json({ error: 'not_found' }, 404));
 
   return app;
 }

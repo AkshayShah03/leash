@@ -9,6 +9,23 @@ function setup() {
   return { store, m };
 }
 
+describe('Store mandates', () => {
+  it('listMandates returns newest first', () => {
+    const { store, m } = setup();
+    const { id: _i, vaultId: _v, setupTokenId: _s, ...input } = mandate();
+    const m2 = store.createMandate({ ...input, goal: 'second' });
+    expect(store.listMandates().map((x) => x.id)).toEqual([m2.id, m.id]);
+  });
+  it('updateMandateRules patches rules and never touches vault fields', () => {
+    const { store, m } = setup();
+    store.updateMandate(m.id, { vaultId: 'V-1' });
+    const next = store.updateMandateRules(m.id, { perOrderCapCents: 123, vaultId: 'evil' } as any);
+    expect(next).toMatchObject({ perOrderCapCents: 123, vaultId: 'V-1' });
+    expect(store.getMandate(m.id)).toMatchObject({ perOrderCapCents: 123, vaultId: 'V-1' });
+    expect(() => store.updateMandateRules('nope', {})).toThrow();
+  });
+});
+
 describe('Store', () => {
   it('creates mandates without vault credentials and updates them', () => {
     const { store, m } = setup();

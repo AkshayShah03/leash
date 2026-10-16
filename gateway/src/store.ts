@@ -32,6 +32,8 @@ export class Store {
     const cols = this.db.prepare('PRAGMA table_info(proposals)').all() as Array<{ name: string }>;
     if (!cols.some((c) => c.name === 'committed_at')) this.db.exec('ALTER TABLE proposals ADD COLUMN committed_at TEXT');
     if (!cols.some((c) => c.name === 'idempotency_key')) this.db.exec('ALTER TABLE proposals ADD COLUMN idempotency_key TEXT');
+    const mcols = this.db.prepare('PRAGMA table_info(mandates)').all() as Array<{ name: string }>;
+    if (!mcols.some((c) => c.name === 'created_at')) this.db.exec('ALTER TABLE mandates ADD COLUMN created_at TEXT');
     this.db.exec(
       'CREATE UNIQUE INDEX IF NOT EXISTS proposals_idem ON proposals (mandate_id, idempotency_key) WHERE idempotency_key IS NOT NULL',
     );
@@ -39,13 +41,29 @@ export class Store {
 
   createMandate(input: MandateInput): Mandate {
     const m: Mandate = { ...input, id: randomUUID(), vaultId: null, setupTokenId: null };
-    this.db.prepare('INSERT INTO mandates (id, data) VALUES (?, ?)').run(m.id, JSON.stringify(m));
+    this.db.prepare('INSERT INTO mandates (id, created_at, data) VALUES (?, ?, ?)').run(m.id, new Date().toISOString(), JSON.stringify(m));
     return m;
   }
 
   getMandate(id: string): Mandate | undefined {
     const row = this.db.prepare('SELECT data FROM mandates WHERE id = ?').get(id) as { data: string } | undefined;
     return row ? (JSON.parse(row.data) as Mandate) : undefined;
+  }
+
+  /** Newest first; rows created before created_at existed (NULL) sort last. */
+  listMandates(): Mandate[] {
+    const rows = this.db.prepare('SELECT data FROM mandates ORDER BY created_at DESC, rowid DESC').all() as Array<{ data: string }>;
+    return rows.map((r) => JSON.parse(r.data) as Mandate);
+  }
+
+  /** Patches spending rules only; vaultId/setupTokenId are never touched, whatever the patch contains. */
+  updateMandateRules(id: string, patch: Partial<MandateInput>): Mandate {
+    const m = this.getMandate(id);
+    if (!m) throw new Error(`Mandate ${id} not found`);
+    const { vaultId: _v, setupTokenId: _s, id: _id, ...rules } = patch as Partial<Mandate>;
+    const next: Mandate = { ...m, ...rules, vaultId: m.vaultId, setupTokenId: m.setupTokenId, id: m.id };
+    this.db.prepare('UPDATE mandates SET data = ? WHERE id = ?').run(JSON.stringify(next), id);
+    return next;
   }
 
   updateMandate(id: string, patch: Partial<Pick<Mandate, 'vaultId' | 'setupTokenId'>>): Mandate {

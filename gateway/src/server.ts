@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { loadPayPalConfig } from './config';
 import { EventBus } from './events';
@@ -41,6 +44,8 @@ const scoutDeps = {
   channel3: new Channel3Client({ apiKey: required('CHANNEL3_API_KEY') }),
   gateway: new GatewayClient({ baseUrl: process.env.GATEWAY_INTERNAL_URL || `http://127.0.0.1:${port}`, agentKey }),
 };
+const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
+const webRoot = existsSync(join(webDist, 'index.html')) ? webDist : undefined;
 const app = createApp({
   leash,
   store,
@@ -49,6 +54,7 @@ const app = createApp({
   keys: { agent: agentKey, owner: ownerKey },
   publicUrl: process.env.PUBLIC_URL || `http://localhost:${port}`,
   session: { passcode: uiPasscode, secret: sessionSecret },
+  webRoot,
   scout: (args) => runScoutTurn(scoutDeps, args),
 });
 

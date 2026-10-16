@@ -63,6 +63,15 @@ describe('scout tools', () => {
     expect(c.gateway.propose).toHaveBeenCalledWith('m1', expect.objectContaining({ priceCents: 5999, merchant: 'adesso.com' }), 'scout:c1:P1:adesso.com');
     expect(out).toMatchObject({ status: 'tracked', proposalId: 'prop-1', priceUsd: 59.99 });
   });
+  it('propose_purchase flags approved-but-in-flight payments as not complete', async () => {
+    for (const status of ['auto_approved', 'human_approved']) {
+      const c = ctx();
+      c.seen.set('P1', kb);
+      (c.gateway.propose as any).mockResolvedValueOnce({ id: 'prop-1', status, reasons: [], intent: null, input: {} });
+      const out = await exec(makeScoutTools(c).propose_purchase, { productId: 'P1', merchantDomain: 'adesso.com' });
+      expect(out).toMatchObject({ status, note: 'payment in progress — not complete yet' });
+    }
+  });
   it('propose_purchase flags a still-proposed replay instead of inventing a status', async () => {
     const c = ctx();
     c.seen.set('P1', kb);

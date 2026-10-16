@@ -1,3 +1,6 @@
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SESSION_TTL_MS } from '../src/session';
 import { createApp } from '../src/http';
@@ -10,7 +13,7 @@ import { FakePayPal, proposal } from './fakes';
 const AGENT = 'Bearer agent-key';
 const OWNER = 'Bearer owner-key';
 
-function setup(failureDelayMs = 0) {
+function setup(failureDelayMs = 0, webRoot?: string) {
   const store = new Store();
   const paypal = new FakePayPal();
   const bus = new EventBus();
@@ -19,7 +22,7 @@ function setup(failureDelayMs = 0) {
     createSetupToken: async (a) => ({ id: 'ST-1', approveUrl: `https://pp/approve?return=${encodeURIComponent(a.returnUrl)}` }),
     createPaymentToken: async (id) => ({ vaultId: `VAULT-for-${id}` }),
   };
-  const app = createApp({ leash, store, vault, events: bus, keys: { agent: 'agent-key', owner: 'owner-key' }, publicUrl: 'https://leash.test', session: { passcode: 'demo-pass', secret: 's'.repeat(32), failureDelayMs } });
+  const app = createApp({ leash, store, vault, events: bus, keys: { agent: 'agent-key', owner: 'owner-key' }, publicUrl: 'https://leash.test', session: { passcode: 'demo-pass', secret: 's'.repeat(32), failureDelayMs }, webRoot });
   // TS 7's lib types Response.json() as Promise<unknown>; the tests read arbitrary JSON bodies.
   type Res = Omit<Response, 'json'> & { json(): Promise<any> }; // eslint-disable-line @typescript-eslint/no-explicit-any
   const call = (method: string, path: string, auth?: string, body?: unknown): Promise<Res> | Res =>
@@ -28,7 +31,11 @@ function setup(failureDelayMs = 0) {
       headers: { ...(auth ? { authorization: auth } : {}), 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-  return { app, store, call };
+  const login = async () => {
+    const r = await app.request('/api/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ passcode: 'demo-pass' }) });
+    return (r.headers.get('set-cookie') ?? '').split(';')[0]!;
+  };
+  return { app, store, call, login };
 }
 
 const mandateBody = {
@@ -86,8 +93,8 @@ describe('HTTP API', () => {
     const { approveUrl } = await (await s.call('POST', `/api/mandates/${m.id}/connect`, OWNER)).json();
     expect(approveUrl).toContain(encodeURIComponent(`https://leash.test/paypal/return?mandate=${m.id}`));
     const ret = await s.call('GET', `/paypal/return?mandate=${m.id}`);
-    expect(ret.status).toBe(200);
-    expect(await ret.text()).toContain('PayPal connected');
+    expect(ret.status).toBe(302);
+    expect(ret.headers.get('location')).toBe(`/?connected=${m.id}`);
     expect(s.store.getMandate(m.id)).toMatchObject({ vaultId: 'VAULT-for-ST-1', setupTokenId: null });
     expect((await (await s.call('GET', `/api/mandates/${m.id}`, AGENT)).json()).connected).toBe(true);
   });
@@ -243,5 +250,83 @@ describe('owner session', () => {
     expect((await s.call('POST', '/api/mandates', OWNER, mandateBody)).status).toBe(201);
     const res = await s.app.request('/api/session', { method: 'DELETE' });
     expect(res.headers.get('set-cookie')).toContain('Max-Age=0');
+  });
+});
+
+describe('UI endpoints', () => {
+  it('GET /api/session reports owner auth state without being gated', async () => {
+    const s = setup();
+    const cookie = await s.login();
+    const viaCookie = await s.app.request('/api/session', { headers: { cookie } });
+    expect(viaCookie.status).toBe(200);
+    expect(await viaCookie.json()).toEqual({ owner: true });
+    const viaBearer = await s.call('GET', '/api/session', OWNER);
+    expect(viaBearer.status).toBe(200);
+    expect(await viaBearer.json()).toEqual({ owner: true });
+    for (const auth of [undefined, AGENT, 'Bearer wrong']) {
+      const r = await s.call('GET', '/api/session', auth);
+      expect(r.status).toBe(401);
+      expect(await r.json()).toEqual({ owner: false });
+    }
+  });
+
+  it('GET /api/mandates lists mandates for the owner only, without vault fields', async () => {
+    const s = setup();
+    await connectedMandate(s);
+    const res = await s.call('GET', '/api/mandates', OWNER);
+    expect(res.status).toBe(200);
+    const list = await res.json();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ goal: mandateBody.goal, connected: true });
+    expect(list[0]).not.toHaveProperty('vaultId');
+    expect(list[0]).not.toHaveProperty('setupTokenId');
+    expect((await s.call('GET', '/api/mandates', AGENT)).status).toBe(403);
+  });
+
+  it('PATCH /api/mandates/:id updates rules (cookie + csrf), rejects vaultId, agent forbidden', async () => {
+    const s = setup();
+    const m = await connectedMandate(s);
+    const cookie = await s.login();
+    const patch = (headers: Record<string, string>, body: unknown) =>
+      s.app.request(`/api/mandates/${m.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
+    expect((await patch({ cookie }, { perOrderCapCents: 100 })).status).toBe(403);
+    const ok = await patch({ cookie, 'x-leash-csrf': '1' }, { perOrderCapCents: 4000 });
+    expect(ok.status).toBe(200);
+    const body = await ok.json();
+    expect(body).toMatchObject({ perOrderCapCents: 4000, connected: true });
+    expect(body).not.toHaveProperty('vaultId');
+    expect(s.store.getMandate(m.id)?.vaultId).toBe('VAULT-for-ST-1');
+    expect((await patch({ cookie, 'x-leash-csrf': '1' }, { vaultId: 'x' })).status).toBe(400);
+    expect((await patch({ authorization: AGENT }, { perOrderCapCents: 1 })).status).toBe(403);
+    expect((await patch({ authorization: OWNER }, { perOrderCapCents: -1 })).status).toBe(400);
+    expect((await s.call('PATCH', '/api/mandates/nope', OWNER, { perOrderCapCents: 1 })).status).toBe(404);
+  });
+
+  it('/paypal/return redirects to the SPA on cancel', async () => {
+    const s = setup();
+    const m = await (await s.call('POST', '/api/mandates', OWNER, mandateBody)).json();
+    const r = await s.call('GET', `/paypal/return?mandate=${m.id}&cancelled=1`);
+    expect(r.status).toBe(302);
+    expect(r.headers.get('location')).toBe('/?connect=cancelled');
+  });
+
+  it('serves the SPA from webRoot with index fallback; API 404s stay JSON', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'leash-web-'));
+    writeFileSync(join(dir, 'index.html'), '<h1>leash</h1>');
+    mkdirSync(join(dir, 'assets'));
+    writeFileSync(join(dir, 'assets', 'a.js'), 'console.log(1)');
+    const s = setup(0, dir);
+    expect(await (await s.app.request('/')).text()).toContain('<h1>leash</h1>');
+    const js = await s.app.request('/assets/a.js');
+    expect(js.status).toBe(200);
+    expect(await js.text()).toBe('console.log(1)');
+    const spa = await s.app.request('/approvals');
+    expect(spa.status).toBe(200);
+    expect(await spa.text()).toContain('<h1>leash</h1>');
+    const nope = await s.app.request('/api/nope');
+    expect(nope.status).toBe(404);
+    expect(nope.headers.get('content-type')).toContain('application/json');
+    expect((await s.app.request('/paypal/nope')).headers.get('content-type') ?? '').not.toContain('text/html');
+    expect((await s.app.request('/api/ledger')).status).toBe(401);
   });
 });

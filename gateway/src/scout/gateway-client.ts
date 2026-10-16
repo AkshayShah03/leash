@@ -22,11 +22,11 @@ export interface GatewayClientOptions {
   baseUrl: string;
   agentKey: string;
   fetch?: typeof fetch;
-  /** Per-request timeout. Default 45 s: a propose can take ~15 s for the AI check plus PayPal time. */
+  /** Per-request timeout. Default 75 s: a propose can take ~15 s for the AI check plus PayPal time. */
   timeoutMs?: number;
 }
 
-const DEFAULT_TIMEOUT_MS = 45_000;
+const DEFAULT_TIMEOUT_MS = 75_000;
 
 /** Agent-side HTTP client. Holds only the agent key; never the owner key. */
 export class GatewayClient {

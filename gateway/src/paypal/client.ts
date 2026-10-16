@@ -7,7 +7,7 @@ export interface PayPalConfig {
 export const SANDBOX_BASE_URL = 'https://api-m.sandbox.paypal.com';
 
 /** A timed-out call rejects with a TimeoutError (not a PayPalError), which Leash treats as a retryable network error. */
-const DEFAULT_TIMEOUT_MS = 20_000;
+const DEFAULT_TIMEOUT_MS = 10_000;
 
 export class PayPalError extends Error {
   constructor(

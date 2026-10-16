@@ -130,6 +130,9 @@ export function makeScoutTools(ctx: ScoutContext) {
           merchant: input.merchant,
           title: input.title,
           ...(proposal.status === 'proposed' ? { note: 'still processing' } : {}),
+          ...(proposal.status === 'auto_approved' || proposal.status === 'human_approved'
+            ? { note: 'payment in progress — not complete yet' }
+            : {}),
         };
       } catch (e) {
         if (e instanceof GatewayError && e.status === 0) {
