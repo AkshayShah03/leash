@@ -80,7 +80,7 @@ export default function Ledger({ mandateId, proposals, onChanged, onToast }: Pro
           <LedgerGrid proposals={visible} events={events} selectedId={selectedId} onSelect={setSelectedId} onChanged={onChanged} onToast={onToast} />
         </Suspense>
       )}
-      <p className="lhint">Select a row to see its audit trail.</p>
+      {!selected && <p className="lhint">Select a row to see its audit trail.</p>}
 
       {selected && (
         <section ref={trailRef} className="ltrail" aria-label={`Audit trail for ${selected.input.title}`}>

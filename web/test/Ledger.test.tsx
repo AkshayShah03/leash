@@ -33,6 +33,18 @@ describe('Ledger page', () => {
     await waitFor(() => expect(screen.queryByRole('heading', { name: /Audit trail/ })).toBeNull());
   });
 
+  it('hides the select-a-row hint while an audit trail is open', async () => {
+    vi.spyOn(api, 'ledger').mockResolvedValue([]);
+    render(<Ledger mandateId="m1" proposals={[proposal()]} onChanged={vi.fn()} onToast={vi.fn()} />);
+    const btn = await screen.findByRole('button', { name: 'Desk Lamp' });
+    expect(screen.getByText('Select a row to see its audit trail.')).toBeTruthy();
+    fireEvent.click(btn);
+    await screen.findByRole('heading', { name: /Audit trail/ });
+    expect(screen.queryByText('Select a row to see its audit trail.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Desk Lamp' }));
+    await waitFor(() => expect(screen.getByText('Select a row to see its audit trail.')).toBeTruthy());
+  });
+
   it('clicking Refund does not select the row or open the audit panel', async () => {
     vi.spyOn(api, 'ledger').mockResolvedValue([]);
     render(<Ledger mandateId="m1" proposals={[proposal()]} onChanged={vi.fn()} onToast={vi.fn()} />);

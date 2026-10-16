@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import type { ColDef } from 'ag-grid-community';
 import { gridTheme, gridThemeDark } from '../grid/theme';
+import { useIsDark } from '../lib/theme';
 import { formatUsd, safeHref } from '../lib/format';
 import type { ProductSummary } from '../lib/types';
 
@@ -42,12 +43,7 @@ export default function ProductGrid({ products }: { products: ProductSummary[] }
     ],
     [],
   );
-  const dark =
-    typeof document !== 'undefined' &&
-    (document.documentElement.dataset.theme === 'dark' ||
-      (document.documentElement.dataset.theme !== 'light' &&
-        typeof window.matchMedia === 'function' &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches));
+  const dark = useIsDark();
   return (
     <div className="pgrid" role="region" aria-label="Product comparison table">
       <AgGridReact<Row>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import type { ColDef, GridApi, GridReadyEvent, ICellRendererParams, RowClickedEvent } from 'ag-grid-community';
 import { gridTheme, gridThemeDark } from '../grid/theme';
+import { useIsDark } from '../lib/theme';
 import { formatTime, formatUsd } from '../lib/format';
 import { canRefund, decidedBy } from '../lib/ledger';
 import type { LedgerEvent, Proposal } from '../lib/types';
@@ -62,14 +63,16 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
   );
   const cols = useMemo<ColDef<Row>[]>(
     () => [
-      { field: 'time', headerName: 'Time', width: 150, valueFormatter: (p) => formatTime(p.value as string) },
+      { field: 'time', headerName: 'Time', flex: 1, minWidth: 140, valueFormatter: (p) => formatTime(p.value as string) },
       {
-        field: 'title', headerName: 'Product', flex: 2, minWidth: 200,
+        field: 'title', headerName: 'Product', flex: 2, minWidth: 220,
+        tooltipField: 'title',
         cellRenderer: (p: Params) =>
           p.data ? (
             <button
               type="button"
               className="lcell-link"
+              title={p.data.title}
               aria-expanded={p.context.selectedId === p.data.id}
               onClick={(e) => { e.stopPropagation(); onSelectRef.current(p.data!.id === p.context.selectedId ? null : p.data!.id); }}
             >
@@ -77,20 +80,20 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
             </button>
           ) : null,
       },
-      { field: 'merchant', headerName: 'Merchant', flex: 1, minWidth: 140 },
+      { field: 'merchant', headerName: 'Merchant', flex: 1, minWidth: 130 },
       { field: 'priceCents', headerName: 'Price', width: 100, type: 'rightAligned', valueFormatter: (p) => formatUsd(p.value as number) },
-      { field: 'status', headerName: 'Status', width: 170, cellRenderer: (p: Params) => (p.data ? <StatusChip status={p.data.status} /> : null) },
+      { field: 'status', headerName: 'Status', flex: 1, minWidth: 190, cellRenderer: (p: Params) => (p.data ? <StatusChip status={p.data.status} /> : null) },
       {
         field: 'match', headerName: 'AI match', width: 110,
         valueFormatter: (p) => (p.value == null ? '—' : `${p.value as number}%`),
       },
       { field: 'decidedBy', headerName: 'Decided by', width: 120 },
       {
-        field: 'orderId', headerName: 'PayPal order', width: 170,
-        cellRenderer: (p: Params) => (p.value ? <span className="lmono">{String(p.value)}</span> : <span className="lmuted">—</span>),
+        field: 'orderId', headerName: 'PayPal order', flex: 1, minWidth: 150, tooltipField: 'orderId',
+        cellRenderer: (p: Params) => (p.value ? <span className="lmono" title={String(p.value)}>{String(p.value)}</span> : <span className="lmuted">—</span>),
       },
       {
-        headerName: 'Actions', colId: 'actions', width: 250, sortable: false, resizable: false,
+        headerName: 'Actions', colId: 'actions', width: 230, minWidth: 230, pinned: 'right', sortable: false, resizable: false,
         cellRenderer: (p: Params) =>
           p.data && canRefund(p.data.proposal) && p.context ? (
             <RefundControl proposal={p.data.proposal} onChanged={p.context.onChanged} onToast={p.context.onToast} />
@@ -99,12 +102,7 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
     ],
     [],
   );
-  const dark =
-    typeof document !== 'undefined' &&
-    (document.documentElement.dataset.theme === 'dark' ||
-      (document.documentElement.dataset.theme !== 'light' &&
-        typeof window.matchMedia === 'function' &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches));
+  const dark = useIsDark();
   const context = useMemo<Ctx>(() => ({ selectedId, onSelect, onChanged, onToast }), [selectedId, onSelect, onChanged, onToast]);
 
   const prevSelected = useRef<string | null>(selectedId);
@@ -130,7 +128,7 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
   }, [selectedId]);
 
   return (
-    <div className="lgrid" role="region" aria-label="Purchase ledger table">
+    <div className={`lgrid ${dark ? 'lgrid--dark' : 'lgrid--light'}`} role="region" aria-label="Purchase ledger table">
       <AgGridReact<Row>
         theme={dark ? gridThemeDark : gridTheme}
         rowData={rows}

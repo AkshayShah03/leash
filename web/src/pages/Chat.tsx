@@ -180,7 +180,7 @@ export default function Chat({ mandateId, liveProposals = [], onProposalsChanged
               <span className="chat__spark" aria-hidden="true"><Sparkles size={26} /></span>
               <h2>What should Scout find for you?</h2>
               <p>Scout searches stores, checks every pick against your spending rules, and asks before anything risky.</p>
-              <div className="chips">
+              <div className="chat__chips">
                 {SUGGESTIONS.map((s) => (
                   <button key={s} type="button" className="suggest" disabled={busy} onClick={() => void send(s)}>{s}</button>
                 ))}
