@@ -126,7 +126,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
               />
             </div>
           )}
-          {activeTab === 'approvals' && <Approvals />}
+          {activeTab === 'approvals' && <Approvals proposals={proposals} onChanged={() => { void loadProposals(); }} onToast={setToast} />}
           {activeTab === 'ledger' && <Ledger />}
           {activeTab === 'rules' && <Rules
               key={creating ? 'new' : mandate?.id ?? 'none'}
