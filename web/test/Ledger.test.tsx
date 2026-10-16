@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Ledger from '../src/pages/Ledger';
 import { api } from '../src/lib/api';
@@ -31,6 +31,28 @@ describe('Ledger page', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Desk Lamp' }).getAttribute('aria-expanded')).toBe('true'));
     fireEvent.click(screen.getByRole('button', { name: 'Desk Lamp' }));
     await waitFor(() => expect(screen.queryByRole('heading', { name: /Audit trail/ })).toBeNull());
+  });
+
+  it('clicking Refund does not select the row or open the audit panel', async () => {
+    vi.spyOn(api, 'ledger').mockResolvedValue([]);
+    render(<Ledger mandateId="m1" proposals={[proposal()]} onChanged={vi.fn()} onToast={vi.fn()} />);
+    const product = await screen.findByRole('button', { name: 'Desk Lamp' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Refund Desk Lamp' }));
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeTruthy();
+    // AG Grid dispatches rowClicked asynchronously; give it time to (wrongly) select.
+    await act(async () => { await new Promise((r) => setTimeout(r, 150)); });
+    expect(screen.queryByRole('heading', { name: /Audit trail/ })).toBeNull();
+    expect(product.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('highlights the selected row via grid context and clears it on toggle', async () => {
+    vi.spyOn(api, 'ledger').mockResolvedValue([]);
+    render(<Ledger mandateId="m1" proposals={[proposal()]} onChanged={vi.fn()} onToast={vi.fn()} />);
+    const row = () => document.querySelector('.ag-row.lrow') as HTMLElement;
+    fireEvent.click(await screen.findByRole('button', { name: 'Desk Lamp' }));
+    await waitFor(() => expect(row().classList.contains('lrow--selected')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Desk Lamp' }));
+    await waitFor(() => expect(row().classList.contains('lrow--selected')).toBe(false));
   });
 
   it('shows an error notice when the ledger fetch fails', async () => {

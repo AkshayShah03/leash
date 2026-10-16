@@ -93,9 +93,7 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
         headerName: 'Actions', colId: 'actions', width: 250, sortable: false, resizable: false,
         cellRenderer: (p: Params) =>
           p.data && canRefund(p.data.proposal) && p.context ? (
-            <span onClick={(e) => e.stopPropagation()}>
-              <RefundControl proposal={p.data.proposal} onChanged={p.context.onChanged} onToast={p.context.onToast} />
-            </span>
+            <RefundControl proposal={p.data.proposal} onChanged={p.context.onChanged} onToast={p.context.onToast} />
           ) : null,
       },
     ],
@@ -109,8 +107,26 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
         window.matchMedia('(prefers-color-scheme: dark)').matches));
   const context = useMemo<Ctx>(() => ({ selectedId, onSelect, onChanged, onToast }), [selectedId, onSelect, onChanged, onToast]);
 
+  const prevSelected = useRef<string | null>(selectedId);
   useEffect(() => {
-    apiRef.current?.refreshCells({ force: true });
+    const api = apiRef.current;
+    const prev = prevSelected.current;
+    prevSelected.current = selectedId;
+    if (!api) return;
+    // refreshCells re-renders cells (aria-expanded) but does not re-evaluate rowClassRules,
+    // so redraw just the two affected rows and put focus back on the product button.
+    const nodes = [prev, selectedId].map((id) => (id ? api.getRowNode(id) : undefined)).filter((n) => !!n);
+    const focusedId = (document.activeElement as HTMLElement | null)?.closest?.('.lcell-link')?.closest('[row-id]')?.getAttribute('row-id');
+    api.refreshCells({ force: true });
+    if (!nodes.length) return;
+    api.redrawRows({ rowNodes: nodes });
+    if (focusedId) {
+      requestAnimationFrame(() => {
+        // Only restore if the redraw dropped focus; never steal it from the audit heading.
+        if (document.activeElement && document.activeElement !== document.body) return;
+        document.querySelector<HTMLElement>(`[row-id="${CSS.escape(focusedId)}"] .lcell-link`)?.focus();
+      });
+    }
   }, [selectedId]);
 
   return (
@@ -123,11 +139,12 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
         getRowId={(p) => p.data.id}
         defaultColDef={{ sortable: true, resizable: true }}
         rowClass="lrow"
-        rowClassRules={{ 'lrow--selected': (p) => p.data?.id === selectedId }}
+        rowClassRules={{ 'lrow--selected': (p) => p.data?.id === p.context?.selectedId }}
         onGridReady={(e: GridReadyEvent<Row>) => { apiRef.current = e.api; }}
         onRowClicked={(e: RowClickedEvent<Row>) => {
-          // The Product button handles its own clicks; AG Grid's native row listener fires before React's stopPropagation can apply.
-          if ((e.event?.target as HTMLElement | null)?.closest?.('.lcell-link')) return;
+          // AG Grid's native row listener fires before React's stopPropagation can apply, so ignore clicks on
+          // interactive controls (Refund/Confirm/Cancel). The Product button calls onSelect itself.
+          if ((e.event?.target as HTMLElement | null)?.closest?.('button, a, input, .lrefund')) return;
           if (e.data) onSelect(e.data.id === selectedId ? null : e.data.id);
         }}
         rowHeight={52}
