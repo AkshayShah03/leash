@@ -6,6 +6,9 @@ export interface PayPalConfig {
 
 export const SANDBOX_BASE_URL = 'https://api-m.sandbox.paypal.com';
 
+/** A timed-out call rejects with a TimeoutError (not a PayPalError), which Leash treats as a retryable network error. */
+const DEFAULT_TIMEOUT_MS = 20_000;
+
 export class PayPalError extends Error {
   constructor(
     public status: number,
@@ -31,13 +34,17 @@ async function readBody(res: Response): Promise<{ body: Json; parsed: boolean }>
 }
 
 export class PayPalClient {
+  private readonly timeoutMs: number;
   private cached: { token: string; expiresAt: number } | null = null;
 
   constructor(
     private cfg: PayPalConfig,
     private fetchFn: typeof fetch = fetch,
     private now: () => number = Date.now,
-  ) {}
+    opts: { timeoutMs?: number } = {},
+  ) {
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  }
 
   async accessToken(): Promise<string> {
     if (this.cached && this.cached.expiresAt > this.now()) return this.cached.token;
@@ -49,6 +56,7 @@ export class PayPalClient {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: 'grant_type=client_credentials',
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
     const { body, parsed } = await readBody(res);
     if (!res.ok || !parsed) throw new PayPalError(res.status, body.debug_id, body);
@@ -75,6 +83,7 @@ export class PayPalClient {
       method,
       headers,
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
     const { body, parsed } = await readBody(res);
     if (!res.ok || !parsed) throw new PayPalError(res.status, body.debug_id, body);

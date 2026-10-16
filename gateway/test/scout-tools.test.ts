@@ -19,6 +19,7 @@ function ctx(over: Partial<ScoutContext> = {}): ScoutContext {
       listProposals: vi.fn(async () => []),
     },
     seen: new Map(),
+    proposedIds: [],
     ...over,
   };
 }
@@ -112,6 +113,19 @@ describe('scout tools', () => {
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
   });
+  it('propose_purchase records proposal ids and reports an unknown result on a gateway timeout', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const c = ctx();
+    c.seen.set('P1', kb);
+    await exec(makeScoutTools(c).propose_purchase, { productId: 'P1', merchantDomain: 'adesso.com' });
+    expect(c.proposedIds).toEqual(['prop-1']);
+    const c2 = ctx({ gateway: { getMandate: vi.fn(), listProposals: vi.fn(), propose: vi.fn(async () => { throw new GatewayError(0, 'timeout'); }) } as any });
+    c2.seen.set('P1', kb);
+    const out = await exec(makeScoutTools(c2).propose_purchase, { productId: 'P1', merchantDomain: 'adesso.com' });
+    expect(out).toEqual({ error: 'The result is unknown — the purchase may still complete. Check the approvals inbox or ledger before trying again.' });
+    expect(c2.proposedIds).toEqual([]);
+    spy.mockRestore();
+  });
   it('check_budget reports limits in dollars', async () => {
     const out = await exec(makeScoutTools(ctx()).check_budget, {});
     expect(out).toEqual({ goal: 'office', perOrderCapUsd: 60, monthlyBudgetUsd: 150, allowedCategories: ['input devices'], connected: true });
@@ -188,5 +202,40 @@ describe('runScoutTurn', () => {
     await runScoutTurn({ model, channel3: c.channel3, gateway: c.gateway }, { mandateId: 'm1', conversationId: 'c1', messages: [{ role: 'user', content: 'x'.repeat(1500) }] });
     const input = (c.gateway.propose as any).mock.calls[0][1];
     expect(input.userRequest).toHaveLength(1000);
+  });
+  it('returns fallback text plus already-proposed purchases when the model fails mid-turn', async () => {
+    const { MockLanguageModelV4 } = await import('ai/test');
+    const { runScoutTurn, SCOUT_FALLBACK_TEXT } = await import('../src/scout/agent');
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const usage = { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } };
+    let n = 0;
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => {
+        if (n++ === 0) return { content: [{ type: 'tool-call' as const, toolCallId: 'b', toolName: 'propose_purchase', input: JSON.stringify({ productId: 'P1', merchantDomain: 'adesso.com' }) }], finishReason: { unified: 'tool-calls' as const, raw: undefined }, usage, warnings: [] };
+        throw new Error('provider exploded');
+      },
+    });
+    const c = ctx();
+    c.seen.set('P1', kb);
+    (c.gateway.listProposals as any).mockResolvedValue([{ id: 'prop-1' }, { id: 'other' }]);
+    const run = (gateway: any) => runScoutTurn({ model, channel3: c.channel3, gateway }, { mandateId: 'm1', conversationId: 'c1', messages: [{ role: 'user', content: 'k' }] });
+    // channel3.getProduct supplies P1 since the agent builds its own seen map
+    const out = await run(c.gateway);
+    expect(out.text).toBe(SCOUT_FALLBACK_TEXT);
+    expect(out.proposals).toEqual([{ id: 'prop-1' }]);
+    // listProposals failing too -> empty proposals, still no throw
+    n = 0;
+    (c.gateway.listProposals as any).mockRejectedValue(new Error('down'));
+    expect((await run(c.gateway)).proposals).toEqual([]);
+    spy.mockRestore();
+  });
+  it('rethrows when the model fails and nothing was proposed or found', async () => {
+    const { MockLanguageModelV4 } = await import('ai/test');
+    const { runScoutTurn } = await import('../src/scout/agent');
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const model = new MockLanguageModelV4({ doGenerate: async () => { throw new Error('provider down'); } });
+    const c = ctx();
+    await expect(runScoutTurn({ model, channel3: c.channel3, gateway: c.gateway }, { mandateId: 'm1', conversationId: 'c1', messages: [{ role: 'user', content: 'k' }] })).rejects.toThrow('provider down');
+    spy.mockRestore();
   });
 });

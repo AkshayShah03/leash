@@ -14,6 +14,8 @@ export interface ScoutContext {
   channel3: Pick<Channel3Client, 'search' | 'getProduct'>;
   gateway: Pick<GatewayClient, 'getMandate' | 'propose' | 'listProposals'>;
   seen: Map<string, ProductSummary>;
+  /** Every proposal id the gateway returned this turn, so a later failure can still surface them. */
+  proposedIds: string[];
 }
 
 function normaliseDomain(domain: string): string {
@@ -50,6 +52,8 @@ export function buildProposalInput(
 
 const usd = (cents: number) => cents / 100;
 const NO_OFFER = 'No in-stock offer from ';
+const UNKNOWN_RESULT =
+  'The result is unknown — the purchase may still complete. Check the approvals inbox or ledger before trying again.';
 
 /** Short, safe error text for the model; the full error is logged server-side. */
 function toolError(e: unknown, where: 'search' | 'lookup' | 'other' = 'other'): { error: string } {
@@ -112,6 +116,7 @@ export function makeScoutTools(ctx: ScoutContext) {
         const input = buildProposalInput(product, merchantDomain, ctx.userRequest);
         const key = `scout:${ctx.conversationId}:${product.id}:${input.merchant}`;
         const proposal: Proposal = await ctx.gateway.propose(ctx.mandateId, input, key);
+        ctx.proposedIds.push(proposal.id);
         return {
           status: proposal.status,
           reasons: proposal.reasons,
@@ -123,6 +128,10 @@ export function makeScoutTools(ctx: ScoutContext) {
           ...(proposal.status === 'proposed' ? { note: 'still processing' } : {}),
         };
       } catch (e) {
+        if (e instanceof GatewayError && e.status === 0) {
+          console.error('[scout] tool error:', e);
+          return { error: UNKNOWN_RESULT };
+        }
         return toolError(e);
       }
     },

@@ -16,6 +16,10 @@ export const SCOUT_SYSTEM = `You are Scout, a shopping agent that buys on behalf
 - A purchase is complete only when status is "captured" or "tracked". If status is "proposed" (still processing), "pending_human", "denied" or "failed", say plainly that it has NOT completed and why.
 - Re-proposing the same product from the same merchant in one conversation returns the earlier proposal rather than buying again.`;
 
+export const SCOUT_FALLBACK_TEXT =
+  'I ran into a problem finishing that request. Any purchase I started is listed below — check its status before asking me to try again.';
+
+const TURN_TIMEOUT_MS = 90_000;
 const MAX_HISTORY = 20;
 const MAX_USER_REQUEST = 1000;
 
@@ -43,16 +47,36 @@ export async function runScoutTurn(
     channel3: deps.channel3,
     gateway: deps.gateway,
     seen: new Map(),
+    proposedIds: [],
   };
 
-  const result = await generateText({
-    model: deps.model,
-    system: SCOUT_SYSTEM,
-    messages: args.messages.slice(-MAX_HISTORY),
-    tools: makeScoutTools(ctx),
-    stopWhen: stepCountIs(6),
-    maxOutputTokens: 1500,
-  });
+  let result;
+  try {
+    result = await generateText({
+      model: deps.model,
+      system: SCOUT_SYSTEM,
+      messages: args.messages.slice(-MAX_HISTORY),
+      tools: makeScoutTools(ctx),
+      stopWhen: stepCountIs(6),
+      maxOutputTokens: 1500,
+      abortSignal: AbortSignal.timeout(TURN_TIMEOUT_MS),
+    });
+  } catch (err) {
+    // A purchase may already have gone through; never hide it behind an error.
+    console.error('[scout] turn failed after', ctx.proposedIds.length, 'proposal(s):', err);
+    const found = [...ctx.seen.values()].slice(0, MAX_UI_PRODUCTS);
+    if (ctx.proposedIds.length === 0 && found.length === 0) throw err;
+    let proposals: Proposal[] = [];
+    if (ctx.proposedIds.length > 0) {
+      try {
+        const ids = new Set(ctx.proposedIds);
+        proposals = (await deps.gateway.listProposals(args.mandateId)).filter((p) => ids.has(p.id));
+      } catch (listErr) {
+        console.error('[scout] could not list proposals after failure:', listErr);
+      }
+    }
+    return { text: SCOUT_FALLBACK_TEXT, products: found, proposals };
+  }
 
   const products = new Map<string, ProductSummary>();
   const proposalIds = new Set<string>();

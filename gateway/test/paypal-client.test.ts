@@ -69,6 +69,30 @@ describe('PayPalClient', () => {
   });
 });
 
+describe('PayPalClient timeouts', () => {
+  // A hung fetch that honours the abort signal rejects with a DOMException (TimeoutError),
+  // i.e. a non-PayPalError network error, which Leash treats as retryable.
+  const hung = ((_url: unknown, init?: RequestInit) =>
+    new Promise((_res, rej) => {
+      init?.signal?.addEventListener('abort', () => rej(init.signal!.reason));
+    })) as typeof fetch;
+
+  it('aborts a hung OAuth call as a non-PayPalError network error', async () => {
+    const err = await new PayPalClient(cfg, hung, Date.now, { timeoutMs: 30 }).accessToken().catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(PayPalError);
+  });
+
+  it('aborts a hung API call as a non-PayPalError network error', async () => {
+    let n = 0;
+    const fn = ((u: unknown, init?: RequestInit) =>
+      n++ === 0 ? Promise.resolve(new Response(JSON.stringify(TOKEN_RESPONSE.body), { status: 200 })) : hung(u as string, init)) as typeof fetch;
+    const err = await new PayPalClient(cfg, fn, Date.now, { timeoutMs: 30 }).request('GET', '/a').catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(PayPalError);
+  });
+});
+
 describe('loadPayPalConfig', () => {
   it('requires credentials and defaults to sandbox', () => {
     expect(() => loadPayPalConfig({})).toThrow('PAYPAL_CLIENT_ID');
