@@ -14,7 +14,10 @@ body {
 
 button, input, textarea, select { font: inherit; }
 
+/* Default focus ring: purple reads on white/canvas. Lime only inside dark containers. */
 :focus-visible { outline: 2px solid var(--purple-600); outline-offset: 2px; }
+.sidebar :is(a, button, input, textarea, select):focus-visible,
+.budget :is(a, button, input, textarea, select):focus-visible { outline-color: var(--lime-400); }
 
 
 /* ---------- controls ---------- */
@@ -24,7 +27,6 @@ button, input, textarea, select { font: inherit; }
 .btn--primary:hover:not(:disabled) { background: var(--purple-700); }
 .btn--lime { background: var(--lime-400); color: var(--purple-900); }
 .btn--lime:hover:not(:disabled) { background: var(--lime-500); }
-.btn:focus-visible { outline-color: var(--lime-400); }
 
 .field { display: grid; gap: 6px; }
 .field__label { font-size: 14px; font-weight: 500; color: var(--ink-600); }
@@ -48,7 +50,6 @@ button, input, textarea, select { font: inherit; }
 .sidebar__select { height: 40px; padding: 0 10px; border-radius: var(--radius-ctl); border: 1px solid rgba(255,255,255,.2); background: var(--purple-700); color: #fff; }
 .nav-item { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--radius-ctl); background: transparent; color: rgba(255,255,255,.72); font-weight: 500; text-align: left; cursor: pointer; }
 .nav-item:hover { background: rgba(255,255,255,.07); color: #fff; }
-.nav-item:focus-visible { outline-color: var(--lime-400); }
 .nav-item--active { background: rgba(255,255,255,.1); color: #fff; }
 .nav-item--active::before { content: ""; position: absolute; left: -16px; top: 10px; bottom: 10px; width: 4px; border-radius: 0 4px 4px 0; background: var(--lime-400); }
 .nav-item--quiet { color: rgba(255,255,255,.6); }
@@ -84,6 +85,18 @@ button, input, textarea, select { font: inherit; }
 .chip--danger { background: rgba(229,72,77,.14); color: #b5282d; }
 .chip--neutral { background: rgba(90,86,104,.14); color: var(--ink-600); }
 .chip--progress { background: var(--purple-100); color: var(--purple-600); }
+:root[data-theme="dark"] .chip--success { background: rgba(76,195,138,.16); color: #4cc38a; }
+:root[data-theme="dark"] .chip--warning { background: rgba(245,165,36,.16); color: #f5a524; }
+:root[data-theme="dark"] .chip--danger { background: rgba(255,99,105,.16); color: #ff6369; }
+:root[data-theme="dark"] .chip--progress { background: rgba(185,166,255,.16); color: #b9a6ff; }
+:root[data-theme="dark"] .chip--neutral { background: rgba(201,198,211,.16); color: #c9c6d3; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .chip--success { background: rgba(76,195,138,.16); color: #4cc38a; }
+  :root:not([data-theme="light"]) .chip--warning { background: rgba(245,165,36,.16); color: #f5a524; }
+  :root:not([data-theme="light"]) .chip--danger { background: rgba(255,99,105,.16); color: #ff6369; }
+  :root:not([data-theme="light"]) .chip--progress { background: rgba(185,166,255,.16); color: #b9a6ff; }
+  :root:not([data-theme="light"]) .chip--neutral { background: rgba(201,198,211,.16); color: #c9c6d3; }
+}
 .empty { display: grid; justify-items: center; gap: 8px; padding: 48px 24px; text-align: center; background: var(--surface); border-radius: var(--radius-card); }
 .empty__title { margin: 0; font-size: 18px; }
 .empty__body { margin: 0; color: var(--ink-600); max-width: 40ch; }
@@ -221,7 +234,6 @@ button, input, textarea, select { font: inherit; }
 .send { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--purple-600); color: #fff; cursor: pointer; transition: background .15s, opacity .15s; }
 .send:hover:not(:disabled) { background: var(--purple-700); }
 .send:disabled { opacity: .4; cursor: not-allowed; }
-.send:focus-visible { outline-color: var(--lime-400); }
 
 /* ---------- approvals inbox ---------- */
 .alist { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; max-width: 760px; }
