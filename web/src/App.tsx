@@ -113,7 +113,18 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           {activeTab === 'chat' && <Chat />}
           {activeTab === 'approvals' && <Approvals />}
           {activeTab === 'ledger' && <Ledger />}
-          {activeTab === 'rules' && <Rules creating={creating} />}
+          {activeTab === 'rules' && <Rules
+              key={creating ? 'new' : mandate?.id ?? 'none'}
+              mandate={mandate}
+              creating={creating}
+              onSaved={(m, kind) => {
+                setToast(kind === 'created' ? 'Mandate created' : 'Rules saved');
+                if (kind === 'created') setMandateId(m.id);
+                void loadMandates();
+              }}
+              onConnect={connect}
+              connecting={connecting}
+            />}
         </main>
       </div>
       {toast && <div className="toast" role="status">{toast}</div>}
