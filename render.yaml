@@ -1,0 +1,46 @@
+# Render Blueprint for Leash: one web service; the gateway serves web/dist.
+# Persistent disks need a paid instance. Free-tier alternative: see README "Deploy to Render".
+services:
+  - type: web
+    name: leash
+    runtime: node
+    plan: 0.5c-512mb         # paid (legacy name: starter); required for the persistent disk
+    numInstances: 1          # live events are in-memory: keep a single instance
+    buildCommand: cd web && npm ci && npm run build && cd ../gateway && npm ci
+    startCommand: cd gateway && npm start
+    healthCheckPath: /healthz
+    disk:
+      name: leash-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION    # gateway needs Node >= 22.13 (node:sqlite)
+        value: "22"
+      - key: LEASH_DB_PATH
+        value: /var/data/leash.db
+      - key: DEMO_SEED
+        value: "1"
+      - key: PUBLIC_URL      # https://<service>.onrender.com
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_BASE_URL
+        value: https://api-m.sandbox.paypal.com
+      - key: DEMO_VAULT_ID
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: LEASH_MODEL
+        value: moonshotai/kimi-k3
+      - key: CHANNEL3_API_KEY
+        sync: false
+      - key: LEASH_AGENT_KEY
+        generateValue: true
+      - key: LEASH_OWNER_KEY
+        generateValue: true
+      - key: LEASH_SESSION_SECRET
+        generateValue: true
+      - key: LEASH_UI_PASSCODE
+        sync: false
