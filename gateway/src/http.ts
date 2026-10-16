@@ -12,17 +12,44 @@ import { SESSION_COOKIE, SESSION_TTL_MS, signSession, verifySession } from './se
 import type { Store } from './store';
 import type { LedgerEvent, Mandate, ProposalStatus } from './types';
 
-export const mandateInputSchema = z.object({
+const mandateFields = {
   goal: z.string().min(1).max(500),
-  currency: z.literal('USD').default('USD'),
+  currency: z.literal('USD'),
   perOrderCapCents: z.number().int().positive(),
   monthlyBudgetCents: z.number().int().positive(),
-  allowedCategories: z.array(z.string().min(1)).default([]),
-  allowedMerchants: z.array(z.string().min(1)).nullable().default(null),
-  blockedMerchants: z.array(z.string().min(1)).default([]),
-  maxOrdersPerDay: z.number().int().positive().default(5),
-  reviewThreshold: z.number().min(0).max(1).default(0.8),
+  allowedCategories: z.array(z.string().min(1)),
+  allowedMerchants: z.array(z.string().min(1)).nullable(),
+  blockedMerchants: z.array(z.string().min(1)),
+  maxOrdersPerDay: z.number().int().positive(),
+  reviewThreshold: z.number().min(0).max(1),
+};
+
+export const mandateInputSchema = z.object({
+  ...mandateFields,
+  currency: mandateFields.currency.default('USD'),
+  allowedCategories: mandateFields.allowedCategories.default([]),
+  allowedMerchants: mandateFields.allowedMerchants.default(null),
+  blockedMerchants: mandateFields.blockedMerchants.default([]),
+  maxOrdersPerDay: mandateFields.maxOrdersPerDay.default(5),
+  reviewThreshold: mandateFields.reviewThreshold.default(0.8),
 });
+
+/** Same validators as the input schema, but no defaults: an omitted field must stay omitted. */
+export const mandatePatchSchema = z
+  .object({
+    goal: mandateFields.goal.optional(),
+    currency: mandateFields.currency.optional(),
+    perOrderCapCents: mandateFields.perOrderCapCents.optional(),
+    monthlyBudgetCents: mandateFields.monthlyBudgetCents.optional(),
+    allowedCategories: mandateFields.allowedCategories.optional(),
+    allowedMerchants: mandateFields.allowedMerchants.optional(),
+    blockedMerchants: mandateFields.blockedMerchants.optional(),
+    maxOrdersPerDay: mandateFields.maxOrdersPerDay.optional(),
+    reviewThreshold: mandateFields.reviewThreshold.optional(),
+  })
+  .strict();
+
+const CAP_EXCEEDS_BUDGET = 'perOrderCapCents must not exceed monthlyBudgetCents';
 
 export const proposalInputSchema = z.object({
   title: z.string().min(1).max(300),
@@ -134,7 +161,9 @@ export function createApp(d: AppDeps) {
   });
 
   app.post('/api/mandates', allow('owner'), async (c) => {
-    const m = d.store.createMandate(mandateInputSchema.parse(await c.req.json()));
+    const input = mandateInputSchema.parse(await c.req.json());
+    if (input.perOrderCapCents > input.monthlyBudgetCents) return c.json({ error: CAP_EXCEEDS_BUDGET }, 400);
+    const m = d.store.createMandate(input);
     return c.json(publicMandate(m), 201);
   });
 
@@ -142,8 +171,13 @@ export function createApp(d: AppDeps) {
 
   app.patch('/api/mandates/:id', allow('owner'), async (c) => {
     const id = c.req.param('id');
-    const patch = mandateInputSchema.partial().strict().parse(await c.req.json());
-    requireMandate(id);
+    const parsed = mandatePatchSchema.parse(await c.req.json());
+    const patch = Object.fromEntries(Object.entries(parsed).filter(([, v]) => v !== undefined)) as typeof parsed;
+    if (Object.keys(patch).length === 0) return c.json({ error: 'patch must include at least one field' }, 400);
+    const current = requireMandate(id);
+    const cap = patch.perOrderCapCents ?? current.perOrderCapCents;
+    const budget = patch.monthlyBudgetCents ?? current.monthlyBudgetCents;
+    if (cap > budget) return c.json({ error: CAP_EXCEEDS_BUDGET }, 400);
     return c.json(publicMandate(d.store.updateMandateRules(id, patch)));
   });
 
@@ -235,10 +269,11 @@ export function createApp(d: AppDeps) {
   if (d.webRoot) {
     const root = d.webRoot;
     const isServerPath = (p: string) => p === '/api' || p.startsWith('/api/') || p === '/paypal' || p.startsWith('/paypal/');
+    const isAssetLike = (p: string) => (p.split('/').pop() ?? '').includes('.');
     const files = serveStatic({ root });
     const index = serveStatic({ root, rewriteRequestPath: () => '/index.html' });
     app.get('*', async (c, next) => (isServerPath(c.req.path) ? next() : files(c, next)));
-    app.get('*', async (c, next) => (isServerPath(c.req.path) ? next() : index(c, next)));
+    app.get('*', async (c, next) => (isServerPath(c.req.path) || isAssetLike(c.req.path) ? next() : index(c, next)));
   }
 
   app.notFound((c) => c.json({ error: 'not_found' }, 404));

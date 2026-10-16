@@ -302,6 +302,35 @@ describe('UI endpoints', () => {
     expect((await s.call('PATCH', '/api/mandates/nope', OWNER, { perOrderCapCents: 1 })).status).toBe(404);
   });
 
+  it('PATCH applies only provided fields; unspecified rules are untouched', async () => {
+    const s = setup();
+    const full = { ...mandateBody, allowedCategories: ['Input Devices'], allowedMerchants: ['a.com'], blockedMerchants: ['b.com'], maxOrdersPerDay: 3, reviewThreshold: 0.7 };
+    const m = await (await s.call('POST', '/api/mandates', OWNER, full)).json();
+    const before = await (await s.call('GET', `/api/mandates/${m.id}`, OWNER)).json();
+    const res = await s.call('PATCH', `/api/mandates/${m.id}`, OWNER, { perOrderCapCents: 4000 });
+    expect(res.status).toBe(200);
+    const after = await (await s.call('GET', `/api/mandates/${m.id}`, OWNER)).json();
+    expect(after).toEqual({ ...before, perOrderCapCents: 4000 });
+    expect(after).toMatchObject({ allowedCategories: ['Input Devices'], allowedMerchants: ['a.com'], blockedMerchants: ['b.com'], maxOrdersPerDay: 3, reviewThreshold: 0.7 });
+  });
+
+  it('rejects perOrderCapCents > monthlyBudgetCents on POST and PATCH, and an empty PATCH', async () => {
+    const s = setup();
+    const msg = { error: 'perOrderCapCents must not exceed monthlyBudgetCents' };
+    const bad = await s.call('POST', '/api/mandates', OWNER, { ...mandateBody, perOrderCapCents: 20000 });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual(msg);
+    const m = await (await s.call('POST', '/api/mandates', OWNER, mandateBody)).json();
+    const cap = await s.call('PATCH', `/api/mandates/${m.id}`, OWNER, { perOrderCapCents: 15001 });
+    expect(cap.status).toBe(400);
+    expect(await cap.json()).toEqual(msg);
+    const budget = await s.call('PATCH', `/api/mandates/${m.id}`, OWNER, { monthlyBudgetCents: 5000 });
+    expect(budget.status).toBe(400);
+    expect(await budget.json()).toEqual(msg);
+    expect((await s.call('PATCH', `/api/mandates/${m.id}`, OWNER, { perOrderCapCents: 15000 })).status).toBe(200);
+    expect((await s.call('PATCH', `/api/mandates/${m.id}`, OWNER, {})).status).toBe(400);
+  });
+
   it('/paypal/return redirects to the SPA on cancel', async () => {
     const s = setup();
     const m = await (await s.call('POST', '/api/mandates', OWNER, mandateBody)).json();
@@ -328,5 +357,8 @@ describe('UI endpoints', () => {
     expect(nope.headers.get('content-type')).toContain('application/json');
     expect((await s.app.request('/paypal/nope')).headers.get('content-type') ?? '').not.toContain('text/html');
     expect((await s.app.request('/api/ledger')).status).toBe(401);
+    const missing = await s.app.request('/assets/missing.js');
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get('content-type')).toContain('application/json');
   });
 });

@@ -16,6 +16,19 @@ describe('Store mandates', () => {
     const m2 = store.createMandate({ ...input, goal: 'second' });
     expect(store.listMandates().map((x) => x.id)).toEqual([m2.id, m.id]);
   });
+  it('listMandates sorts a legacy row with NULL created_at last', () => {
+    const { store, m } = setup();
+    const { id: _i, vaultId: _v, setupTokenId: _s, ...input } = mandate();
+    const m2 = store.createMandate({ ...input, goal: 'second' });
+    (store as any).db.prepare('UPDATE mandates SET created_at = NULL WHERE id = ?').run(m2.id); // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(store.listMandates().map((x) => x.id)).toEqual([m.id, m2.id]);
+  });
+  it('updateMandateRules ignores undefined values in the patch', () => {
+    const { store, m } = setup();
+    const next = store.updateMandateRules(m.id, { perOrderCapCents: 123, maxOrdersPerDay: undefined });
+    expect(next.maxOrdersPerDay).toBe(m.maxOrdersPerDay);
+    expect(store.getMandate(m.id)?.maxOrdersPerDay).toBe(m.maxOrdersPerDay);
+  });
   it('updateMandateRules patches rules and never touches vault fields', () => {
     const { store, m } = setup();
     store.updateMandate(m.id, { vaultId: 'V-1' });

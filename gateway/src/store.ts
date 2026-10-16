@@ -60,7 +60,8 @@ export class Store {
   updateMandateRules(id: string, patch: Partial<MandateInput>): Mandate {
     const m = this.getMandate(id);
     if (!m) throw new Error(`Mandate ${id} not found`);
-    const { vaultId: _v, setupTokenId: _s, id: _id, ...rules } = patch as Partial<Mandate>;
+    const { vaultId: _v, setupTokenId: _s, id: _id, ...all } = patch as Partial<Mandate>;
+    const rules = Object.fromEntries(Object.entries(all).filter(([, v]) => v !== undefined));
     const next: Mandate = { ...m, ...rules, vaultId: m.vaultId, setupTokenId: m.setupTokenId, id: m.id };
     this.db.prepare('UPDATE mandates SET data = ? WHERE id = ?').run(JSON.stringify(next), id);
     return next;
