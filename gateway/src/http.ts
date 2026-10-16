@@ -31,7 +31,7 @@ export const proposalInputSchema = z.object({
   merchant: z.string().min(1).max(200),
   priceCents: z.number().int().positive(),
   currency: z.string().length(3),
-  productUrl: z.string().url().optional(),
+  productUrl: z.string().url().refine((u) => /^https?:\/\//i.test(u), 'productUrl must be http(s)').optional(),
   userRequest: z.string().min(1).max(1000),
 });
 

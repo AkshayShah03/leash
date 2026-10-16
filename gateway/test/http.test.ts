@@ -98,6 +98,13 @@ describe('HTTP API', () => {
     expect((await s.call('GET', `/paypal/return?mandate=${m.id}`)).status).toBe(409);
   });
 
+  it.each(['javascript:alert(1)', 'data:text/html,x'])('rejects non-http(s) productUrl %s with 400', async (productUrl) => {
+    const s = setup();
+    const m = await connectedMandate(s);
+    const res = await s.call('POST', `/api/mandates/${m.id}/proposals`, AGENT, { ...proposal(), productUrl });
+    expect(res.status).toBe(400);
+  });
+
   it('agent proposes; owner refunds; ledger is visible to both', async () => {
     const s = setup();
     const m = await connectedMandate(s);

@@ -133,3 +133,20 @@ describe('Channel3Client description and ids', () => {
     expect(calls[0].url).toBe('https://api.trychannel3.com/v1/products/a%2Fb%3F');
   });
 });
+
+describe('Channel3Client URL scheme allowlist', () => {
+  it('drops offers with a non-http(s) url and nulls a non-http(s) image', async () => {
+    const body = {
+      ...raw,
+      images: [{ url: 'data:text/html,x', cleaned_url: null, is_main_image: true }],
+      offers: [
+        { ...raw.offers[0], url: 'javascript:alert(1)' },
+        { ...raw.offers[0], url: 'HTTPS://buy/ok', domain: 'ok.com' },
+      ],
+    };
+    const { fn } = fake(200, { products: [body], next_page_token: null });
+    const [p] = await new Channel3Client({ apiKey: 'k', fetch: fn }).search('q');
+    expect(p.imageUrl).toBeNull();
+    expect(p.offers.map((o) => o.domain)).toEqual(['ok.com']);
+  });
+});

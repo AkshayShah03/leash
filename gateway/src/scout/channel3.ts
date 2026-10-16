@@ -68,10 +68,13 @@ interface RawSearchResponse {
   next_page_token: string | null;
 }
 
+const isHttpUrl = (u: unknown): u is string => typeof u === 'string' && /^https?:\/\//i.test(u);
+
 function normalise(raw: RawProduct): ProductSummary {
   const images = raw.images ?? [];
   const mainImage = images.find((img) => img.is_main_image) ?? images[0];
-  const imageUrl = mainImage ? (mainImage.cleaned_url ?? mainImage.url) : null;
+  const rawImage = mainImage ? (mainImage.cleaned_url ?? mainImage.url) : null;
+  const imageUrl = isHttpUrl(rawImage) ? rawImage : null;
   const trimmedDescription = raw.description?.trim();
   const description = (
     trimmedDescription ? trimmedDescription : (raw.key_features ?? []).join('. ').trim()
@@ -84,6 +87,7 @@ function normalise(raw: RawProduct): ProductSummary {
     // toPrecision(12) strips binary float noise (1.005 * 100 = 100.49999...) before rounding.
     const cents = Math.round(Number((price * 100).toPrecision(12)));
     if (!Number.isSafeInteger(cents) || cents <= 0) continue;
+    if (!isHttpUrl(offer.url)) continue;
     offers.push({
       domain: offer.domain,
       priceCents: cents,
