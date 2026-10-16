@@ -1,7 +1,7 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollText } from 'lucide-react';
 import { api } from '../lib/api';
-import { formatUsd, statusLabel } from '../lib/format';
+import { formatTime, formatUsd, statusLabel } from '../lib/format';
 import { FILTERS, actorLabel, eventsFor, ledgerTotals, matchesFilter, type LedgerFilter } from '../lib/ledger';
 import type { LedgerEvent, Proposal } from '../lib/types';
 import EmptyState from '../components/EmptyState';
@@ -15,22 +15,20 @@ interface Props {
   onToast: (msg: string) => void;
 }
 
-const timeFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' });
-function fmtTime(iso: string) {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : timeFmt.format(d);
-}
-
 export default function Ledger({ mandateId, proposals, onChanged, onToast }: Props) {
   const [events, setEvents] = useState<LedgerEvent[]>([]);
   const [filter, setFilter] = useState<LedgerFilter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [eventsError, setEventsError] = useState(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const trailRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     let live = true;
     api.ledger(mandateId).then(
-      (list) => { if (live) setEvents(list); },
-      () => { /* keep previous events; next change retries */ },
+      (list) => { if (live) { setEvents(list); setEventsError(false); setLoaded(true); } },
+      () => { if (live) { setEventsError(true); setLoaded(true); } /* keep previous events; next change retries */ },
     );
     return () => { live = false; };
   }, [mandateId, proposals]);
@@ -40,7 +38,17 @@ export default function Ledger({ mandateId, proposals, onChanged, onToast }: Pro
   const selected = proposals.find((p) => p.id === selectedId) ?? null;
   const trail = selected ? eventsFor(events, selected.id) : [];
 
+  useEffect(() => {
+    if (!selectedId) return;
+    const el = trailRef.current;
+    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Defer so the grid's own post-click redraw/focus handling doesn't steal focus back.
+    const t = setTimeout(() => headingRef.current?.focus({ preventScroll: true }), 0);
+    return () => clearTimeout(t);
+  }, [selectedId]);
+
   if (proposals.length === 0) {
+    if (!loaded) return <div className="grid-loading" role="status">Loading ledger…</div>;
     return (
       <EmptyState icon={<ScrollText size={32} />} title="No purchases yet">
         Every decision Scout and your rules make will be recorded here.
@@ -51,8 +59,8 @@ export default function Ledger({ mandateId, proposals, onChanged, onToast }: Pro
   return (
     <div className="ledger">
       <section className="ltotals" aria-label="Totals">
-        <div className="ltotal"><span className="ltotal__label">Bought this month</span><strong className="ltotal__value">{formatUsd(totals.boughtCents)}</strong></div>
-        <div className="ltotal"><span className="ltotal__label">Blocked</span><strong className="ltotal__value">{totals.blockedCount}</strong></div>
+        <div className="ltotal"><span className="ltotal__label">Bought this month (completed)</span><strong className="ltotal__value">{formatUsd(totals.boughtCents)}</strong></div>
+        <div className="ltotal"><span className="ltotal__label">Denied</span><strong className="ltotal__value">{totals.deniedCount}</strong></div>
         <div className="ltotal"><span className="ltotal__label">Refunded</span><strong className="ltotal__value">{formatUsd(totals.refundedCents)}</strong></div>
       </section>
 
@@ -75,18 +83,20 @@ export default function Ledger({ mandateId, proposals, onChanged, onToast }: Pro
       <p className="lhint">Select a row to see its audit trail.</p>
 
       {selected && (
-        <section className="ltrail" aria-label={`Audit trail for ${selected.input.title}`}>
+        <section ref={trailRef} className="ltrail" aria-label={`Audit trail for ${selected.input.title}`}>
           <div className="ltrail__head">
-            <h2 className="ltrail__title">Audit trail · {selected.input.title}</h2>
+            <h2 ref={headingRef} tabIndex={-1} className="ltrail__title">Audit trail · {selected.input.title}</h2>
             <button type="button" className="btn btn--ghost lrefund__btn" onClick={() => setSelectedId(null)}>Close</button>
           </div>
-          {trail.length === 0 ? (
+          {eventsError && trail.length === 0 ? (
+            <p className="lnone lnotice" role="alert">Couldn't load the audit trail</p>
+          ) : trail.length === 0 ? (
             <p className="lnone">No events recorded.</p>
           ) : (
             <ol className="ltrail__list">
               {trail.map((e) => (
                 <li key={e.seq} className="ltrail__item">
-                  <time className="ltrail__time" dateTime={e.at}>{fmtTime(e.at)}</time>
+                  <time className="ltrail__time" dateTime={e.at}>{formatTime(e.at, true)}</time>
                   <span className="ltrail__status">{statusLabel(e.status)}</span>
                   <span className="ltrail__actor">{actorLabel(e.actor)}</span>
                   <span className="ltrail__detail">{e.detail}</span>

@@ -54,3 +54,13 @@ export function statusTone(s: ProposalStatus): Tone {
       return 'progress';
   }
 }
+
+const timeFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const timeFmtSec = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+
+/** ISO timestamp → short local date/time; em dash when unparseable. */
+export function formatTime(iso: string, withSeconds = false): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return (withSeconds ? timeFmtSec : timeFmt).format(d);
+}

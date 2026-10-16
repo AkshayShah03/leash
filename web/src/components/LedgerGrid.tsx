@@ -1,14 +1,16 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import type { ColDef, ICellRendererParams, RowClickedEvent } from 'ag-grid-community';
+import type { ColDef, GridApi, GridReadyEvent, ICellRendererParams, RowClickedEvent } from 'ag-grid-community';
 import { gridTheme, gridThemeDark } from '../grid/theme';
-import { formatUsd } from '../lib/format';
+import { formatTime, formatUsd } from '../lib/format';
 import { canRefund, decidedBy } from '../lib/ledger';
 import type { LedgerEvent, Proposal } from '../lib/types';
 import StatusChip from './StatusChip';
 import RefundControl from './RefundControl';
 
 interface Ctx {
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
   onChanged: () => void;
   onToast: (msg: string) => void;
 }
@@ -27,12 +29,6 @@ interface Row {
   orderId: string;
 }
 
-const timeFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-export function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : timeFmt.format(d);
-}
-
 interface Props {
   proposals: Proposal[];
   events: LedgerEvent[];
@@ -43,6 +39,9 @@ interface Props {
 }
 
 export default function LedgerGrid({ proposals, events, selectedId, onSelect, onChanged, onToast }: Props) {
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const apiRef = useRef<GridApi<Row> | null>(null);
   const rows = useMemo<Row[]>(
     () =>
       [...proposals]
@@ -64,7 +63,20 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
   const cols = useMemo<ColDef<Row>[]>(
     () => [
       { field: 'time', headerName: 'Time', width: 150, valueFormatter: (p) => formatTime(p.value as string) },
-      { field: 'title', headerName: 'Product', flex: 2, minWidth: 200 },
+      {
+        field: 'title', headerName: 'Product', flex: 2, minWidth: 200,
+        cellRenderer: (p: Params) =>
+          p.data ? (
+            <button
+              type="button"
+              className="lcell-link"
+              aria-expanded={p.context.selectedId === p.data.id}
+              onClick={(e) => { e.stopPropagation(); onSelectRef.current(p.data!.id === p.context.selectedId ? null : p.data!.id); }}
+            >
+              {p.data.title}
+            </button>
+          ) : null,
+      },
       { field: 'merchant', headerName: 'Merchant', flex: 1, minWidth: 140 },
       { field: 'priceCents', headerName: 'Price', width: 100, type: 'rightAligned', valueFormatter: (p) => formatUsd(p.value as number) },
       { field: 'status', headerName: 'Status', width: 170, cellRenderer: (p: Params) => (p.data ? <StatusChip status={p.data.status} /> : null) },
@@ -95,7 +107,11 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
       (document.documentElement.dataset.theme !== 'light' &&
         typeof window.matchMedia === 'function' &&
         window.matchMedia('(prefers-color-scheme: dark)').matches));
-  const context = useMemo<Ctx>(() => ({ onChanged, onToast }), [onChanged, onToast]);
+  const context = useMemo<Ctx>(() => ({ selectedId, onSelect, onChanged, onToast }), [selectedId, onSelect, onChanged, onToast]);
+
+  useEffect(() => {
+    apiRef.current?.refreshCells({ force: true });
+  }, [selectedId]);
 
   return (
     <div className="lgrid" role="region" aria-label="Purchase ledger table">
@@ -107,11 +123,15 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
         getRowId={(p) => p.data.id}
         defaultColDef={{ sortable: true, resizable: true }}
         rowClass="lrow"
-        getRowClass={(p) => (p.data?.id === selectedId ? 'lrow--selected' : undefined)}
-        onRowClicked={(e: RowClickedEvent<Row>) => e.data && onSelect(e.data.id === selectedId ? null : e.data.id)}
+        rowClassRules={{ 'lrow--selected': (p) => p.data?.id === selectedId }}
+        onGridReady={(e: GridReadyEvent<Row>) => { apiRef.current = e.api; }}
+        onRowClicked={(e: RowClickedEvent<Row>) => {
+          // The Product button handles its own clicks; AG Grid's native row listener fires before React's stopPropagation can apply.
+          if ((e.event?.target as HTMLElement | null)?.closest?.('.lcell-link')) return;
+          if (e.data) onSelect(e.data.id === selectedId ? null : e.data.id);
+        }}
         rowHeight={52}
         domLayout="autoHeight"
-        suppressCellFocus
       />
     </div>
   );

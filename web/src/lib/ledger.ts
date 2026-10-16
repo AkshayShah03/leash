@@ -50,16 +50,16 @@ export function decidedBy(events: LedgerEvent[], proposalId: string): string {
 
 export interface Totals {
   boughtCents: number;
-  blockedCount: number;
+  deniedCount: number;
   refundedCents: number;
 }
 
 export function ledgerTotals(proposals: Proposal[], now: Date = new Date()): Totals {
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth();
-  const t: Totals = { boughtCents: 0, blockedCount: 0, refundedCents: 0 };
+  const t: Totals = { boughtCents: 0, deniedCount: 0, refundedCents: 0 };
   for (const p of proposals) {
-    if (p.status === 'denied') t.blockedCount += 1;
+    if (p.status === 'denied') t.deniedCount += 1;
     else if (p.status === 'refunded') t.refundedCents += p.input.priceCents;
     else if (canRefund(p) && p.committedAt) {
       const d = new Date(p.committedAt);

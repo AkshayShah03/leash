@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatUsd, parseUsdToCents, safeHref, statusLabel, statusTone } from '../src/lib/format';
+import { formatTime, formatUsd, parseUsdToCents, safeHref, statusLabel, statusTone } from '../src/lib/format';
 import type { ProposalStatus } from '../src/lib/types';
 
 describe('formatUsd', () => {
@@ -62,5 +62,17 @@ describe('status mapping', () => {
   it.each(cases)('%s', (s, label, tone) => {
     expect(statusLabel(s)).toBe(label);
     expect(statusTone(s)).toBe(tone);
+  });
+});
+
+describe('formatTime', () => {
+  it('formats valid ISO and dashes invalid', () => {
+    expect(formatTime('2026-10-16T10:00:00Z')).not.toBe('—');
+    expect(formatTime('nope')).toBe('—');
+    expect(formatTime('')).toBe('—');
+  });
+  it('only includes seconds when asked', () => {
+    const iso = '2026-10-16T10:00:07Z';
+    expect(formatTime(iso, true).length).toBeGreaterThan(formatTime(iso).length);
   });
 });

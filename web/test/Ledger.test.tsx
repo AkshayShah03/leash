@@ -13,17 +13,40 @@ const proposal = (over: Partial<Proposal> = {}): Proposal => ({
 describe('Ledger page', () => {
   beforeEach(() => { vi.restoreAllMocks(); });
 
-  it('shows empty state', () => {
+  it('shows empty state only after the ledger fetch completes', async () => {
     vi.spyOn(api, 'ledger').mockResolvedValue([]);
     render(<Ledger mandateId="m1" proposals={[]} onChanged={vi.fn()} onToast={vi.fn()} />);
-    expect(screen.getByText('No purchases yet')).toBeTruthy();
+    expect(screen.queryByText('No purchases yet')).toBeNull();
+    expect(await screen.findByText('No purchases yet')).toBeTruthy();
+  });
+
+  it('product button toggles the audit trail and moves focus to its heading', async () => {
+    vi.spyOn(api, 'ledger').mockResolvedValue([]);
+    render(<Ledger mandateId="m1" proposals={[proposal()]} onChanged={vi.fn()} onToast={vi.fn()} />);
+    const btn = await screen.findByRole('button', { name: 'Desk Lamp' });
+    expect(btn.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(btn);
+    const heading = await screen.findByRole('heading', { name: /Audit trail/ });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Desk Lamp' }).getAttribute('aria-expanded')).toBe('true'));
+    fireEvent.click(screen.getByRole('button', { name: 'Desk Lamp' }));
+    await waitFor(() => expect(screen.queryByRole('heading', { name: /Audit trail/ })).toBeNull());
+  });
+
+  it('shows an error notice when the ledger fetch fails', async () => {
+    vi.spyOn(api, 'ledger').mockRejectedValue(new Error('boom'));
+    render(<Ledger mandateId="m1" proposals={[proposal()]} onChanged={vi.fn()} onToast={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Desk Lamp' }));
+    expect((await screen.findByRole('alert')).textContent).toContain("Couldn't load the audit trail");
+    expect(screen.queryByText('No events recorded.')).toBeNull();
   });
 
   it('fetches events for the mandate and shows totals and filters', async () => {
     const spy = vi.spyOn(api, 'ledger').mockResolvedValue([]);
     render(<Ledger mandateId="m1" proposals={[proposal({ status: 'denied', id: 'p2' }), proposal({ status: 'refunded', id: 'p3' })]} onChanged={vi.fn()} onToast={vi.fn()} />);
     await waitFor(() => expect(spy).toHaveBeenCalledWith('m1'));
-    expect(screen.getByText('Blocked', { selector: '.ltotal__label' })).toBeTruthy();
+    expect(screen.getByText('Denied', { selector: '.ltotal__label' })).toBeTruthy();
+    expect(screen.getByText('Bought this month (completed)')).toBeTruthy();
     expect(screen.getByText('$59.99', { selector: '.ltotal__value' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Needs OK' }));
     expect(screen.getByText('Nothing matches this filter.')).toBeTruthy();

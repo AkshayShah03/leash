@@ -40,6 +40,6 @@ describe('ledger helpers', () => {
       p('1', 'captured', 1000), p('2', 'tracked', 500), p('3', 'captured', 700, '2026-09-30T23:59:59Z'),
       p('4', 'auto_approved', 900), p('5', 'denied'), p('6', 'denied'), p('7', 'refunded', 2500), p('8', 'refunded', 100),
     ], now);
-    expect(t).toEqual({ boughtCents: 1500, blockedCount: 2, refundedCents: 2600 });
+    expect(t).toEqual({ boughtCents: 1500, deniedCount: 2, refundedCents: 2600 });
   });
 });

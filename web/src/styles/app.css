@@ -273,3 +273,10 @@ button, input, textarea, select { font: inherit; }
   .ltrail__item { grid-template-columns: 1fr 1fr; }
   .ltrail__detail { grid-column: 1 / -1; }
 }
+
+.lcell-link { all: unset; cursor: pointer; font-weight: 600; text-decoration: underline; text-decoration-color: transparent; }
+.lcell-link:hover { text-decoration-color: currentColor; }
+.lcell-link:focus-visible { outline: 2px solid var(--purple-600, currentColor); outline-offset: 2px; border-radius: 4px; }
+.ltrail__title:focus { outline: none; }
+.ltrail__title:focus-visible { outline: 2px solid var(--purple-600, currentColor); outline-offset: 2px; border-radius: 4px; }
+.lnotice { color: var(--danger-600, #b42318); }
