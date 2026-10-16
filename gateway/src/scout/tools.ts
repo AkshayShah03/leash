@@ -58,7 +58,11 @@ const UNKNOWN_RESULT =
 /** Short, safe error text for the model; the full error is logged server-side. */
 function toolError(e: unknown, where: 'search' | 'lookup' | 'other' = 'other'): { error: string } {
   console.error('[scout] tool error:', e);
-  if (where === 'lookup') return { error: 'That product could not be found' };
+  if (where === 'lookup') {
+    return e instanceof Channel3Error && e.status === 404
+      ? { error: 'That product could not be found' }
+      : { error: 'Product search is unavailable right now' };
+  }
   if (e instanceof Channel3Error) return { error: 'Product search is unavailable right now' };
   if (e instanceof GatewayError) {
     return {

@@ -72,7 +72,7 @@ describe('scout tools', () => {
   });
   it('propose_purchase fetches unseen products and returns errors instead of throwing', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const c = ctx({ channel3: { search: vi.fn(), getProduct: vi.fn(async () => { throw new Error('not found'); }) } as any });
+    const c = ctx({ channel3: { search: vi.fn(), getProduct: vi.fn(async () => { throw new Channel3Error(404, 'not found'); }) } as any });
     const out = await exec(makeScoutTools(c).propose_purchase, { productId: 'NOPE', merchantDomain: 'x.com' });
     expect(out).toEqual({ error: 'That product could not be found' });
     spy.mockRestore();
@@ -124,6 +124,14 @@ describe('scout tools', () => {
     const out = await exec(makeScoutTools(c2).propose_purchase, { productId: 'P1', merchantDomain: 'adesso.com' });
     expect(out).toEqual({ error: 'The result is unknown — the purchase may still complete. Check the approvals inbox or ledger before trying again.' });
     expect(c2.proposedIds).toEqual([]);
+    spy.mockRestore();
+  });
+  it('maps only a Channel3 404 to "not found"; other lookup errors to "unavailable"', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const lookup = (e: Error) => exec(makeScoutTools(ctx({ channel3: { search: vi.fn(), getProduct: vi.fn(async () => { throw e; }) } as any })).propose_purchase, { productId: 'Z', merchantDomain: 'a.com' });
+    expect(await lookup(new Channel3Error(404, 'x'))).toEqual({ error: 'That product could not be found' });
+    expect(await lookup(new Channel3Error(500, 'x'))).toEqual({ error: 'Product search is unavailable right now' });
+    expect(await lookup(new Error('boom'))).toEqual({ error: 'Product search is unavailable right now' });
     spy.mockRestore();
   });
   it('check_budget reports limits in dollars', async () => {
