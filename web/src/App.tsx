@@ -27,12 +27,14 @@ function Shell({ onLogout }: { onLogout: () => void }) {
       const list = await api.listMandates();
       setMandates(list);
       setLoadError(false);
-      setMandateId((cur) => (cur && list.some((m) => m.id === cur) ? cur : list.length ? list[list.length - 1].id : null));
+      setMandateId((cur) => (cur && list.some((m) => m.id === cur) ? cur : list.length ? list[0].id : null));
       if (list.length === 0) setTab('rules');
     } catch {
       setLoadError(true);
     }
   }, []);
+
+  useEffect(() => { setProposals([]); }, [mandateId]);
 
   const loadProposals = useCallback(async () => {
     if (!mandateId) return;
