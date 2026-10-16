@@ -1,8 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import type { Proposal, ProposalInput } from '../types';
-import type { Channel3Client, ProductSummary } from './channel3';
-import type { GatewayClient } from './gateway-client';
+import { Channel3Error, type Channel3Client, type ProductSummary } from './channel3';
+import { GatewayError, type GatewayClient } from './gateway-client';
 
 const MAX_PRODUCTS = 6;
 
@@ -49,7 +49,21 @@ export function buildProposalInput(
 }
 
 const usd = (cents: number) => cents / 100;
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const NO_OFFER = 'No in-stock offer from ';
+
+/** Short, safe error text for the model; the full error is logged server-side. */
+function toolError(e: unknown, where: 'search' | 'lookup' | 'other' = 'other'): { error: string } {
+  console.error('[scout] tool error:', e);
+  if (where === 'lookup') return { error: 'That product could not be found' };
+  if (e instanceof Channel3Error) return { error: 'Product search is unavailable right now' };
+  if (e instanceof GatewayError) {
+    return {
+      error: e.status === 0 ? 'The payment gateway is unreachable right now' : `The gateway rejected the request (HTTP ${e.status})`,
+    };
+  }
+  if (e instanceof Error && e.message.startsWith(NO_OFFER)) return { error: e.message };
+  return { error: 'Something went wrong' };
+}
 
 export function makeScoutTools(ctx: ScoutContext) {
   const search_products = tool({
@@ -75,21 +89,28 @@ export function makeScoutTools(ctx: ScoutContext) {
           })),
         };
       } catch (e) {
-        return { error: errMsg(e) };
+        return toolError(e);
       }
     },
   });
 
   const propose_purchase = tool({
     description:
-      'Propose buying one product from one merchant. The gateway decides: approved/tracked, needs owner approval, or denied. Price and details are filled in by the server.',
+      'Propose buying one product from one merchant. The gateway decides: approved/tracked, needs owner approval, or denied. Price and details are filled in by the server. Proposing the same product from the same merchant again in one conversation returns the earlier proposal instead of buying again.',
     inputSchema: z.object({ productId: z.string().min(1), merchantDomain: z.string().min(1) }),
     execute: async ({ productId, merchantDomain }) => {
       try {
-        const product = ctx.seen.get(productId) ?? (await ctx.channel3.getProduct(productId));
+        let product = ctx.seen.get(productId);
+        if (!product) {
+          try {
+            product = await ctx.channel3.getProduct(productId);
+          } catch (e) {
+            return toolError(e, 'lookup');
+          }
+        }
         ctx.seen.set(product.id, product);
         const input = buildProposalInput(product, merchantDomain, ctx.userRequest);
-        const key = `scout:${ctx.conversationId}:${productId}:${merchantDomain}`;
+        const key = `scout:${ctx.conversationId}:${product.id}:${input.merchant}`;
         const proposal: Proposal = await ctx.gateway.propose(ctx.mandateId, input, key);
         return {
           status: proposal.status,
@@ -102,7 +123,7 @@ export function makeScoutTools(ctx: ScoutContext) {
           ...(proposal.status === 'proposed' ? { note: 'still processing' } : {}),
         };
       } catch (e) {
-        return { error: errMsg(e) };
+        return toolError(e);
       }
     },
   });
@@ -121,7 +142,7 @@ export function makeScoutTools(ctx: ScoutContext) {
           connected: m.connected,
         };
       } catch (e) {
-        return { error: errMsg(e) };
+        return toolError(e);
       }
     },
   });
