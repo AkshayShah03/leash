@@ -211,7 +211,7 @@ export function createApp(d: AppDeps) {
 
   if (d.scout) {
     app.use('/api/scout/*', allow('owner'));
-    app.route('/api/scout', createScoutRoute(d.scout));
+    app.route('/api/scout', createScoutRoute(d.scout, requireMandate));
   }
 
   return app;

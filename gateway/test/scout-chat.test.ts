@@ -8,6 +8,8 @@ import { FakePayPal } from './fakes';
 
 function setup(scout: (args: any) => Promise<ScoutTurnResult>) {
   const store = new Store();
+  const mandate = store.createMandate({ goal: 'g', currency: 'USD', perOrderCapCents: 6000, monthlyBudgetCents: 15000, allowedCategories: [], allowedMerchants: null, blockedMerchants: [], maxOrdersPerDay: 5, reviewThreshold: 0.8 });
+  body.mandateId = mandate.id; // each setup() has its own store; point the shared body at its mandate
   const events = new EventBus();
   const leash = new Leash({ store, paypal: new FakePayPal(), intent: async () => ({ score: 0.95, reason: 'ok' }), onEvent: (e) => events.publish(e) });
   return createApp({
@@ -28,6 +30,13 @@ const post = (app: ReturnType<typeof setup>, key: string | null, b: unknown) =>
   });
 
 describe('POST /api/scout/chat', () => {
+  it('404s an unknown mandate before running the turn', async () => {
+    const stub = vi.fn(async (_a: unknown) => ({ text: 'x', products: [], proposals: [] }));
+    const res = await post(setup(stub), 'owner-key', { ...body, mandateId: 'nope' });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Mandate nope not found' });
+    expect(stub).not.toHaveBeenCalled();
+  });
   it('rejects unauthenticated and agent callers, accepts owner', async () => {
     const stub = vi.fn(async (_a: unknown) => ({ text: 'Found it', products: [], proposals: [] }));
     const app = setup(stub);

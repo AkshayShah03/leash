@@ -18,10 +18,11 @@ export type RunScoutTurn = (args: ScoutChatArgs) => Promise<ScoutTurnResult>;
  * Sub-app with no auth of its own: createApp mounts it behind allow('owner')
  * (`app.use('/api/scout/*', allow('owner'))`), so it must not be mounted elsewhere.
  */
-export function createScoutRoute(runTurn: RunScoutTurn): Hono {
+export function createScoutRoute(runTurn: RunScoutTurn, requireMandate: (id: string) => unknown): Hono {
   const route = new Hono();
   route.post('/chat', async (c) => {
     const args = chatSchema.parse(await c.req.json());
+    requireMandate(args.mandateId); // 404 before spending LLM credits
     try {
       return c.json(await runTurn(args));
     } catch (err) {
