@@ -116,7 +116,16 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         {loadError && <p role="alert" className="notice">Could not load your spending rules. Check the gateway and refresh.</p>}
         {mandate && <BudgetCard mandate={mandate} proposals={proposals} onConnect={connect} connecting={connecting} />}
         <main className="content">
-          {activeTab === 'chat' && <Chat />}
+          {mandateId && (
+            <div hidden={activeTab !== 'chat'}>
+              <Chat
+                key={mandateId}
+                mandateId={mandateId}
+                onProposalsChanged={() => { void loadProposals(); }}
+                onReviewApprovals={() => setTab('approvals')}
+              />
+            </div>
+          )}
           {activeTab === 'approvals' && <Approvals />}
           {activeTab === 'ledger' && <Ledger />}
           {activeTab === 'rules' && <Rules
