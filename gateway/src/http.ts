@@ -1,10 +1,12 @@
-import { timingSafeEqual } from 'node:crypto';
-import { Hono, type MiddlewareHandler } from 'hono';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { Hono, type Context, type MiddlewareHandler } from 'hono';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import type { EventBus } from './events';
 import { Leash, LeashError } from './leash';
 import type { VaultApi } from './paypal/api';
+import { SESSION_COOKIE, signSession, verifySession } from './session';
 import type { Store } from './store';
 import type { LedgerEvent, Mandate, ProposalStatus } from './types';
 
@@ -45,6 +47,7 @@ export interface AppDeps {
   events: EventBus;
   keys: { agent: string; owner: string };
   publicUrl: string;
+  session: { passcode: string; secret: string };
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -52,6 +55,8 @@ function safeEqual(a: string, b: string): boolean {
   const y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
 }
+
+const sha256 = (v: string) => createHash('sha256').update(v).digest();
 
 function publicMandate(m: Mandate) {
   const { vaultId, setupTokenId: _setup, ...rest } = m;
@@ -61,20 +66,27 @@ function publicMandate(m: Mandate) {
 export function createApp(d: AppDeps) {
   const app = new Hono();
 
-  const roleOf = (header: string | undefined): Role | null => {
-    const key = header?.replace(/^Bearer /, '');
-    if (!key) return null;
-    if (safeEqual(key, d.keys.owner)) return 'owner';
-    if (safeEqual(key, d.keys.agent)) return 'agent';
+  const authOf = (c: Context): { role: Role; via: 'bearer' | 'cookie' } | null => {
+    const header = c.req.header('authorization');
+    if (header) {
+      const key = header.replace(/^Bearer /, '');
+      if (!key) return null;
+      if (safeEqual(key, d.keys.owner)) return { role: 'owner', via: 'bearer' };
+      if (safeEqual(key, d.keys.agent)) return { role: 'agent', via: 'bearer' };
+      return null;
+    }
+    if (verifySession(d.session.secret, getCookie(c, SESSION_COOKIE), Date.now())) return { role: 'owner', via: 'cookie' };
     return null;
   };
 
   const allow =
     (...roles: Role[]): MiddlewareHandler =>
     async (c, next) => {
-      const role = roleOf(c.req.header('authorization'));
-      if (!role) return c.json({ error: 'unauthorized' }, 401);
-      if (!roles.includes(role)) return c.json({ error: 'forbidden' }, 403);
+      const auth = authOf(c);
+      if (!auth) return c.json({ error: 'unauthorized' }, 401);
+      if (!roles.includes(auth.role)) return c.json({ error: 'forbidden' }, 403);
+      if (auth.via === 'cookie' && !roles.includes('agent') && c.req.method !== 'GET' && c.req.header('x-leash-csrf') !== '1')
+        return c.json({ error: 'csrf_required' }, 403);
       await next();
     };
 
@@ -90,6 +102,20 @@ export function createApp(d: AppDeps) {
     if (err instanceof SyntaxError) return c.json({ error: 'invalid_json' }, 400);
     console.error(err);
     return c.json({ error: 'internal_error' }, 500);
+  });
+
+  app.post('/api/session', async (c) => {
+    const { passcode } = z.object({ passcode: z.string().max(500) }).parse(await c.req.json());
+    if (!timingSafeEqual(sha256(passcode), sha256(d.session.passcode))) return c.json({ error: 'invalid_passcode' }, 401);
+    setCookie(c, SESSION_COOKIE, signSession(d.session.secret, Date.now()), {
+      httpOnly: true, sameSite: 'Strict', path: '/', maxAge: 43200, secure: d.publicUrl.startsWith('https://'),
+    });
+    return c.json({ ok: true });
+  });
+
+  app.delete('/api/session', (c) => {
+    deleteCookie(c, SESSION_COOKIE, { path: '/' });
+    return c.json({ ok: true });
   });
 
   app.post('/api/mandates', allow('owner'), async (c) => {

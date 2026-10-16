@@ -18,7 +18,7 @@ function setup() {
     createSetupToken: async (a) => ({ id: 'ST-1', approveUrl: `https://pp/approve?return=${encodeURIComponent(a.returnUrl)}` }),
     createPaymentToken: async (id) => ({ vaultId: `VAULT-for-${id}` }),
   };
-  const app = createApp({ leash, store, vault, events: bus, keys: { agent: 'agent-key', owner: 'owner-key' }, publicUrl: 'https://leash.test' });
+  const app = createApp({ leash, store, vault, events: bus, keys: { agent: 'agent-key', owner: 'owner-key' }, publicUrl: 'https://leash.test', session: { passcode: 'demo-pass', secret: 's'.repeat(32) } });
   // TS 7's lib types Response.json() as Promise<unknown>; the tests read arbitrary JSON bodies.
   type Res = Omit<Response, 'json'> & { json(): Promise<any> }; // eslint-disable-line @typescript-eslint/no-explicit-any
   const call = (method: string, path: string, auth?: string, body?: unknown): Promise<Res> | Res =>
@@ -179,5 +179,39 @@ describe('SSE', () => {
     const s = setup();
     expect((await s.call('GET', '/api/events', AGENT)).status).toBe(400);
     expect((await s.call('GET', '/api/events?mandate=x')).status).toBe(401);
+  });
+});
+
+describe('owner session', () => {
+  it('logs in with the passcode and acts as owner with the CSRF header', async () => {
+    const s = setup();
+    const bad = await s.app.request('/api/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ passcode: 'nope' }) });
+    expect(bad.status).toBe(401);
+    const ok = await s.app.request('/api/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ passcode: 'demo-pass' }) });
+    expect(ok.status).toBe(200);
+    const cookie = ok.headers.get('set-cookie')!;
+    expect(cookie).toContain('HttpOnly');
+    expect(cookie).toContain('SameSite=Strict');
+    expect(cookie).toContain('Secure');
+    const jar = cookie.split(';')[0];
+    const create = (extra: Record<string, string>) =>
+      s.app.request('/api/mandates', { method: 'POST', headers: { cookie: jar, 'content-type': 'application/json', ...extra }, body: JSON.stringify(mandateBody) });
+    expect((await create({})).status).toBe(403);
+    expect((await create({ 'x-leash-csrf': '1' })).status).toBe(201);
+    const read = await s.app.request('/api/ledger', { headers: { cookie: jar } });
+    expect(read.status).toBe(200);
+  });
+  it('a wrong bearer key is rejected even with a valid cookie', async () => {
+    const s = setup();
+    const ok = await s.app.request('/api/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ passcode: 'demo-pass' }) });
+    const jar = ok.headers.get('set-cookie')!.split(';')[0];
+    const res = await s.app.request('/api/ledger', { headers: { cookie: jar, authorization: 'Bearer wrong' } });
+    expect(res.status).toBe(401);
+  });
+  it('bearer owner needs no CSRF header; DELETE clears the cookie', async () => {
+    const s = setup();
+    expect((await s.call('POST', '/api/mandates', OWNER, mandateBody)).status).toBe(201);
+    const res = await s.app.request('/api/session', { method: 'DELETE' });
+    expect(res.headers.get('set-cookie')).toContain('Max-Age=0');
   });
 });
