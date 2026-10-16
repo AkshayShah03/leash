@@ -3,10 +3,14 @@ import { loadPayPalConfig } from './config';
 import { EventBus } from './events';
 import { createApp } from './http';
 import { makeIntentChecker } from './intent';
-import { llmGenerate } from './intent-llm';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { DEFAULT_MODEL, llmGenerate } from './intent-llm';
 import { Leash } from './leash';
 import { PayPalRest } from './paypal/api';
 import { PayPalClient } from './paypal/client';
+import { runScoutTurn } from './scout/agent';
+import { Channel3Client } from './scout/channel3';
+import { GatewayClient } from './scout/gateway-client';
 import { Store } from './store';
 
 function required(name: string): string {
@@ -32,6 +36,11 @@ const paypal = new PayPalRest(new PayPalClient(loadPayPalConfig()));
 const store = new Store(process.env.LEASH_DB_PATH ?? 'leash.db');
 const events = new EventBus();
 const leash = new Leash({ store, paypal, intent: makeIntentChecker(llmGenerate(), 15_000), onEvent: (e) => events.publish(e) });
+const scoutDeps = {
+  model: createOpenRouter({ apiKey: required('OPENROUTER_API_KEY') }).chat(process.env.SCOUT_MODEL || process.env.LEASH_MODEL || DEFAULT_MODEL),
+  channel3: new Channel3Client({ apiKey: required('CHANNEL3_API_KEY') }),
+  gateway: new GatewayClient({ baseUrl: process.env.GATEWAY_INTERNAL_URL ?? `http://127.0.0.1:${port}`, agentKey }),
+};
 const app = createApp({
   leash,
   store,
@@ -40,6 +49,7 @@ const app = createApp({
   keys: { agent: agentKey, owner: ownerKey },
   publicUrl: process.env.PUBLIC_URL ?? `http://localhost:${port}`,
   session: { passcode: uiPasscode, secret: sessionSecret },
+  scout: (args) => runScoutTurn(scoutDeps, args),
 });
 
 serve({ fetch: app.fetch, port }, (info) => console.log(`Leash gateway listening on http://localhost:${info.port}`));

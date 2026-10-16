@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { EventBus } from './events';
 import { Leash, LeashError } from './leash';
 import type { VaultApi } from './paypal/api';
+import { createScoutRoute, type RunScoutTurn } from './scout/route';
 import { SESSION_COOKIE, SESSION_TTL_MS, signSession, verifySession } from './session';
 import type { Store } from './store';
 import type { LedgerEvent, Mandate, ProposalStatus } from './types';
@@ -48,6 +49,8 @@ export interface AppDeps {
   keys: { agent: string; owner: string };
   publicUrl: string;
   session: { passcode: string; secret: string; failureDelayMs?: number };
+  /** Scout chat turn runner; when absent, /api/scout is not mounted. */
+  scout?: RunScoutTurn;
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -205,6 +208,11 @@ export function createApp(d: AppDeps) {
       }
     });
   });
+
+  if (d.scout) {
+    app.use('/api/scout/*', allow('owner'));
+    app.route('/api/scout', createScoutRoute(d.scout));
+  }
 
   return app;
 }
