@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Approvals from '../src/pages/Approvals';
 import { ApiError, api } from '../src/lib/api';
@@ -81,5 +81,67 @@ describe('Approvals', () => {
     expect((screen.getByRole('button', { name: 'Deny Gaming Headset' }) as HTMLButtonElement).disabled).toBe(true);
     resolve(proposal({ status: 'human_approved' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Approve Gaming Headset' })).toBeNull());
+  });
+
+  it('shows failed approve status inline without success toast', async () => {
+    vi.spyOn(api, 'approve').mockResolvedValue(proposal({ status: 'failed', reasons: ['Card declined'] }));
+    const { onToast } = setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve Gaming Headset' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not complete: Card declined');
+    expect(onToast).not.toHaveBeenCalled();
+  });
+
+  it('falls back to status when failed has no reasons', async () => {
+    vi.spyOn(api, 'approve').mockResolvedValue(proposal({ status: 'failed', reasons: [] }));
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve Gaming Headset' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not complete: failed');
+  });
+
+  it('shows server message for other api errors', async () => {
+    vi.spyOn(api, 'approve').mockRejectedValue(new ApiError(422, 'mandate_expired'));
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve Gaming Headset' }));
+    const text = (await screen.findByRole('alert')).textContent ?? '';
+    expect(text).toContain('mandate_expired');
+    expect(text).not.toContain('Something went wrong');
+  });
+
+  it('shows connectivity message on network errors', async () => {
+    vi.spyOn(api, 'approve').mockRejectedValue(new TypeError('Failed to fetch'));
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve Gaming Headset' }));
+    expect((await screen.findByRole('alert')).textContent).toContain("Can't reach the gateway. Check your connection.");
+  });
+
+  it('sends one request for two same-tick clicks', async () => {
+    const spy = vi.spyOn(api, 'approve').mockReturnValue(new Promise(() => {}));
+    setup();
+    const btn = screen.getByRole('button', { name: 'Approve Gaming Headset' });
+    act(() => { btn.click(); btn.click(); });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('caps deny reason at 300 chars and shows a counter', () => {
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Deny Gaming Headset' }));
+    const input = screen.getByLabelText('Reason (optional)') as HTMLInputElement;
+    expect(input.maxLength).toBe(300);
+    fireEvent.change(input, { target: { value: 'abcde' } });
+    expect(screen.getByText('5/300')).toBeTruthy();
+  });
+
+  it('clears the leave timer on unmount', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(api, 'approve').mockResolvedValue(proposal({ status: 'human_approved' }));
+      const { unmount } = render(<Approvals proposals={[proposal()]} onChanged={vi.fn()} onToast={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Approve Gaming Headset' }));
+      await vi.advanceTimersByTimeAsync(10);
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

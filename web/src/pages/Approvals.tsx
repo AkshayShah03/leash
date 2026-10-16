@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, ExternalLink, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { ApiError, api } from '../lib/api';
 import { formatUsd, safeHref } from '../lib/format';
@@ -12,7 +12,11 @@ interface Props {
   onToast: (msg: string) => void;
 }
 
-interface Outcome { proposal: Proposal; message: string }
+type OutcomeKind = 'done' | 'blocked' | 'error';
+interface Outcome { proposal: Proposal; kind: OutcomeKind; message: string }
+
+const APPROVED_STATUSES = new Set(['human_approved', 'auto_approved', 'captured', 'tracked']);
+const REASON_MAX = 300;
 
 function ApprovalCard({ proposal, outcome, leaving, onChanged, onToast, onOutcome, onDismiss }: {
   proposal: Proposal;
@@ -24,32 +28,41 @@ function ApprovalCard({ proposal, outcome, leaving, onChanged, onToast, onOutcom
   onDismiss: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const [denying, setDenying] = useState(false);
   const [reason, setReason] = useState('');
   const { input, intent } = proposal;
   const href = safeHref(input.productUrl);
 
   async function run(call: () => Promise<Proposal>, okToast: string, isApprove: boolean) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     try {
       const res = await call();
-      if (isApprove && res.status === 'denied') {
-        const why = res.reasons[0] ?? 'policy no longer allows it';
-        onOutcome({ proposal, message: `Blocked on re-check: ${why}` });
-      } else {
+      if (!isApprove || APPROVED_STATUSES.has(res.status)) {
         onToast(okToast);
-        onOutcome({ proposal, message: '' });
+        onOutcome({ proposal, kind: 'done', message: '' });
+      } else if (res.status === 'denied') {
+        const why = res.reasons[0] ?? 'policy no longer allows it';
+        onOutcome({ proposal, kind: 'blocked', message: `Blocked on re-check: ${why}` });
+      } else {
+        onOutcome({ proposal, kind: 'error', message: `Could not complete: ${res.reasons[0] ?? res.status}` });
       }
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) onOutcome({ proposal, message: 'Already decided' });
-      else onOutcome({ proposal, message: `Something went wrong${e instanceof ApiError ? ` (${e.code ?? e.status})` : ''}. Try again.` });
+      let message: string;
+      if (e instanceof ApiError && e.status === 409) message = 'Already decided';
+      else if (e instanceof ApiError) message = e.code ? e.code : `Request failed (${e.status}). Try again.`;
+      else message = "Can't reach the gateway. Check your connection.";
+      onOutcome({ proposal, kind: 'error', message });
     } finally {
+      inFlight.current = false;
       setBusy(false);
       onChanged();
     }
   }
 
-  const failed = outcome && outcome.message !== '';
+  const failed = outcome && outcome.kind !== 'done';
   return (
     <li className={`acard ${leaving ? 'acard--leaving' : ''}`}>
       <div className="acard__head">
@@ -89,7 +102,7 @@ function ApprovalCard({ proposal, outcome, leaving, onChanged, onToast, onOutcom
 
       {failed ? (
         <div className="acard__result" role="alert">
-          {outcome.message.startsWith('Blocked') && <StatusChip status="denied" />}
+          {outcome.kind === 'blocked' && <StatusChip status="denied" />}
           <span>{outcome.message}</span>
           <button type="button" className="btn btn--secondary acard__dismiss" onClick={onDismiss}>Dismiss</button>
         </div>
@@ -98,8 +111,9 @@ function ApprovalCard({ proposal, outcome, leaving, onChanged, onToast, onOutcom
           {denying && (
             <div className="field">
               <label className="field__label" htmlFor={`reason-${proposal.id}`}>Reason (optional)</label>
-              <input id={`reason-${proposal.id}`} value={reason} maxLength={200} disabled={busy}
+              <input id={`reason-${proposal.id}`} value={reason} maxLength={REASON_MAX} disabled={busy}
                 onChange={(e) => setReason(e.target.value)} placeholder="Tell Scout why" />
+              <span className="field__hint" aria-live="polite">{reason.length}/{REASON_MAX}</span>
             </div>
           )}
           <div className="acard__actions">
@@ -134,22 +148,32 @@ export default function Approvals({ proposals, onChanged, onToast }: Props) {
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [leaving, setLeaving] = useState<Record<string, boolean>>({});
 
+  const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  useEffect(() => {
+    const pendingTimers = timers.current;
+    return () => { pendingTimers.forEach(clearTimeout); pendingTimers.clear(); };
+  }, []);
+
   const pending = proposals
     .filter((p) => p.status === 'pending_human')
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const pendingIds = new Set(pending.map((p) => p.id));
   // Cards that failed inline stay visible even after the refetch removes them from the pending list.
   const kept = Object.values(outcomes)
-    .filter((o) => o.message !== '' && !pendingIds.has(o.proposal.id))
+    .filter((o) => o.kind !== 'done' && !pendingIds.has(o.proposal.id))
     .map((o) => o.proposal);
-  const visible = [...pending, ...kept].filter((p) => !(outcomes[p.id]?.message === '' && !leaving[p.id]));
+  const visible = [...pending, ...kept].filter((p) => !(outcomes[p.id]?.kind === 'done' && !leaving[p.id]));
 
   function handleOutcome(o: Outcome) {
     const id = o.proposal.id;
-    if (o.message === '') {
+    if (o.kind === 'done') {
       setLeaving((l) => ({ ...l, [id]: true }));
       setOutcomes((cur) => ({ ...cur, [id]: o }));
-      setTimeout(() => setLeaving((l) => ({ ...l, [id]: false })), 250);
+      const t = setTimeout(() => {
+        timers.current.delete(t);
+        setLeaving((l) => { const n = { ...l }; delete n[id]; return n; });
+      }, 250);
+      timers.current.add(t);
     } else {
       setOutcomes((cur) => ({ ...cur, [id]: o }));
     }
@@ -162,6 +186,18 @@ export default function Approvals({ proposals, onChanged, onToast }: Props) {
       return next;
     });
   }
+
+  // Drop finished outcomes once the refetch has removed their proposal from the pending list.
+  // Deleting earlier would resurrect a still-pending card if the refetch is slow.
+  useEffect(() => {
+    setOutcomes((cur) => {
+      const stale = Object.keys(cur).filter((id) => cur[id].kind === 'done' && !leaving[id] && !pendingIds.has(id));
+      if (stale.length === 0) return cur;
+      const n = { ...cur };
+      stale.forEach((id) => delete n[id]);
+      return n;
+    });
+  });
 
   if (visible.length === 0) {
     return (
