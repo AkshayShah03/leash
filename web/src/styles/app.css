@@ -140,8 +140,16 @@ button, input, textarea, select { font: inherit; }
 .btn--secondary:hover:not(:disabled) { background: #e0d8ff; }
 .rules__connect { position: sticky; top: 24px; }
 .connected { display: grid; gap: 14px; }
-.connected__row { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: var(--radius-ctl); background: rgba(198,244,50,.28); color: var(--purple-900); font-weight: 600; }
-.connected__row svg { color: var(--success); }
+.connected__row { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: var(--radius-ctl); background: var(--lime-400); color: #14121A; font-weight: 600; }
+.connected__row svg { color: #14121A; }
+.connected .btn--secondary { justify-self: start; background: transparent; color: var(--ink-900); border: 1px solid var(--ink-300); }
+.connected .btn--secondary:hover:not(:disabled) { background: var(--purple-100); }
+:root[data-theme="dark"] .connected .btn--secondary { color: #fff; }
+:root[data-theme="dark"] .connected .btn--secondary:hover:not(:disabled) { background: rgba(255,255,255,.08); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .connected .btn--secondary { color: #fff; }
+  :root:not([data-theme="light"]) .connected .btn--secondary:hover:not(:disabled) { background: rgba(255,255,255,.08); }
+}
 @media (max-width: 1099px) { .rules { grid-template-columns: 1fr; } .rules__connect { position: static; } }
 @media (max-width: 599px) { .grid2 { grid-template-columns: 1fr; } .card { padding: 20px; } }
 
