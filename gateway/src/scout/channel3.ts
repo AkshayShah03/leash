@@ -72,15 +72,21 @@ function normalise(raw: RawProduct): ProductSummary {
   const images = raw.images ?? [];
   const mainImage = images.find((img) => img.is_main_image) ?? images[0];
   const imageUrl = mainImage ? (mainImage.cleaned_url ?? mainImage.url) : null;
-  const description = (raw.description ?? (raw.key_features ?? []).join('. ')).trim().slice(0, MAX_DESCRIPTION_CHARS);
+  const trimmedDescription = raw.description?.trim();
+  const description = (
+    trimmedDescription ? trimmedDescription : (raw.key_features ?? []).join('. ').trim()
+  ).slice(0, MAX_DESCRIPTION_CHARS);
 
   const offers: ProductOffer[] = [];
   for (const offer of raw.offers ?? []) {
     const price = offer.price?.price;
-    if (typeof price !== 'number' || !Number.isFinite(price)) continue;
+    if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) continue;
+    // toPrecision(12) strips binary float noise (1.005 * 100 = 100.49999...) before rounding.
+    const cents = Math.round(Number((price * 100).toPrecision(12)));
+    if (!Number.isSafeInteger(cents) || cents <= 0) continue;
     offers.push({
       domain: offer.domain,
-      priceCents: Math.round(price * 100),
+      priceCents: cents,
       currency: offer.price?.currency ?? '',
       availability: offer.availability,
       condition: offer.condition ?? null,
@@ -115,16 +121,28 @@ export class Channel3Client {
     query: string,
     opts: { maxPriceCents?: number; limit?: number } = {},
   ): Promise<ProductSummary[]> {
-    const limit = Math.min(Math.max(1, opts.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
+    const requested = opts.limit;
+    const limit = Number.isInteger(requested)
+      ? Math.min(Math.max(1, requested as number), MAX_LIMIT)
+      : DEFAULT_LIMIT;
     const filters: Record<string, unknown> = { availability: ['InStock'] };
     if (opts.maxPriceCents !== undefined) {
+      if (!Number.isSafeInteger(opts.maxPriceCents) || opts.maxPriceCents <= 0) {
+        throw new Error('maxPriceCents must be a positive integer');
+      }
       filters.price = { max_price: opts.maxPriceCents / 100 };
     }
-    const body = await this.request<RawSearchResponse>('/search', {
+    const body = await this.request<unknown>('/search', {
       method: 'POST',
       body: JSON.stringify({ query, limit, filters }),
     });
-    return body.products.map(normalise);
+    if (
+      typeof body !== 'object' || body === null ||
+      !Array.isArray((body as { products?: unknown }).products)
+    ) {
+      throw new Channel3Error(200, 'Unexpected response from Channel3');
+    }
+    return (body as RawSearchResponse).products.map(normalise);
   }
 
   async getProduct(id: string): Promise<ProductSummary> {
@@ -140,6 +158,12 @@ export class Channel3Client {
       const text = await res.text().catch(() => '');
       throw new Channel3Error(res.status, text.slice(0, MAX_ERROR_CHARS));
     }
-    return (await res.json()) as T;
+    let body: unknown;
+    try {
+      body = await res.json();
+    } catch {
+      throw new Channel3Error(res.status, 'Unexpected response from Channel3');
+    }
+    return body as T;
   }
 }

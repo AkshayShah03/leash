@@ -52,3 +52,84 @@ describe('Channel3Client', () => {
     await expect(new Channel3Client({ apiKey: 'x', fetch: fn }).search('a')).rejects.toBeInstanceOf(Channel3Error);
   });
 });
+
+function withPrice(price: unknown) {
+  return { ...raw, offers: [{ ...raw.offers[0], price: { price, currency: 'USD' } }] };
+}
+
+function fakeText(status: number, text: string) {
+  const fn = (async () => new Response(text, { status })) as typeof fetch;
+  return { fn };
+}
+
+describe('Channel3Client price normalisation', () => {
+  it.each([
+    [59.99, 5999],
+    [1.005, 101],
+    [19.999, 2000],
+  ])('converts price %s to %i cents', async (price, cents) => {
+    const { fn } = fake(200, { products: [withPrice(price)], next_page_token: null });
+    const [p] = await new Channel3Client({ apiKey: 'k', fetch: fn }).search('q');
+    expect(p.offers[0].priceCents).toBe(cents);
+  });
+
+  it.each([0, -5, NaN, null])('skips offer with price %s', async (price) => {
+    const { fn } = fake(200, { products: [withPrice(price)], next_page_token: null });
+    const [p] = await new Channel3Client({ apiKey: 'k', fetch: fn }).search('q');
+    expect(p.offers).toEqual([]);
+  });
+});
+
+describe('Channel3Client input validation', () => {
+  it.each([
+    [0, 1],
+    [99, 10],
+    [2.5, 6],
+    [NaN, 6],
+  ])('limit %s is sent as %i', async (limit, expected) => {
+    const { fn, calls } = fake(200, { products: [], next_page_token: null });
+    await new Channel3Client({ apiKey: 'k', fetch: fn }).search('q', { limit });
+    expect(JSON.parse(String(calls[0].init.body)).limit).toBe(expected);
+  });
+
+  it.each([-1, 0, 1.5, NaN])('maxPriceCents %s throws', async (maxPriceCents) => {
+    const { fn, calls } = fake(200, { products: [], next_page_token: null });
+    await expect(new Channel3Client({ apiKey: 'k', fetch: fn }).search('q', { maxPriceCents }))
+      .rejects.toThrow('maxPriceCents must be a positive integer');
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe('Channel3Client response parsing', () => {
+  it('throws Channel3Error on a 200 with a non-JSON body', async () => {
+    const { fn } = fakeText(200, '<html>oops</html>');
+    const err = await new Channel3Client({ apiKey: 'k', fetch: fn }).search('q').catch((e) => e);
+    expect(err).toBeInstanceOf(Channel3Error);
+    expect(err).toMatchObject({ status: 200, message: 'Unexpected response from Channel3' });
+  });
+
+  it('throws Channel3Error on a 200 with no products array', async () => {
+    const { fn } = fake(200, { next_page_token: null });
+    await expect(new Channel3Client({ apiKey: 'k', fetch: fn }).search('q'))
+      .rejects.toMatchObject({ status: 200, message: 'Unexpected response from Channel3' });
+  });
+
+  it('returns [] when products is empty', async () => {
+    const { fn } = fake(200, { products: [], next_page_token: null });
+    expect(await new Channel3Client({ apiKey: 'k', fetch: fn }).search('q')).toEqual([]);
+  });
+});
+
+describe('Channel3Client description and ids', () => {
+  it('falls back to key_features when description is an empty string', async () => {
+    const { fn } = fake(200, { ...raw, description: '   ' });
+    const p = await new Channel3Client({ apiKey: 'k', fetch: fn }).getProduct('x');
+    expect(p.description).toBe('Ergonomic design. Integrated palm rest');
+  });
+
+  it('percent-encodes product ids', async () => {
+    const { fn, calls } = fake(200, raw);
+    await new Channel3Client({ apiKey: 'k', fetch: fn }).getProduct('a/b?');
+    expect(calls[0].url).toBe('https://api.trychannel3.com/v1/products/a%2Fb%3F');
+  });
+});
