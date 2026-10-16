@@ -103,4 +103,9 @@ describe('api', () => {
     expect(await api.connect('m1')).toEqual({ approveUrl: 'https://x' });
     expect(lastCall().url).toBe('/api/mandates/m1/connect');
   });
+
+  it('tolerates an empty 2xx body', async () => {
+    fetchMock.mockImplementation(async () => new Response(null, { status: 204 }));
+    await expect(api.logout()).resolves.toBeUndefined();
+  });
 });
