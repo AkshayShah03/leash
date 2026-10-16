@@ -21,6 +21,7 @@ export interface ProposalInput {
   title: string;
   description: string;
   category: string;
+  categoryPath?: string[]; // ancestor titles or slugs, root first
   merchant: string;
   priceCents: number;
   currency: string;

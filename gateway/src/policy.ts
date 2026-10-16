@@ -1,7 +1,7 @@
 import { formatUsd } from './money';
 import type { Mandate, ProposalInput, RuleResult, SpendHistory } from './types';
 
-const norm = (s: string) => s.trim().toLowerCase();
+const normCat = (s: string) => s.trim().toLowerCase().replace(/[-_]+/g, ' ');
 
 export function normMerchant(s: string): string {
   return s
@@ -33,7 +33,8 @@ export function evaluatePolicy(m: Mandate, p: ProposalInput, h: SpendHistory): R
   if (p.priceCents > remaining) {
     reasons.push(`Price ${formatUsd(p.priceCents)} exceeds remaining monthly budget ${formatUsd(remaining)}`);
   }
-  if (m.allowedCategories.length > 0 && !m.allowedCategories.map(norm).includes(norm(p.category))) {
+  const candidates = [p.category, ...(p.categoryPath ?? [])].map(normCat);
+  if (m.allowedCategories.length > 0 && !m.allowedCategories.map(normCat).some((a) => candidates.includes(a))) {
     reasons.push(`Category "${p.category}" is not in the allowed categories`);
   }
   const merchant = normMerchant(p.merchant);

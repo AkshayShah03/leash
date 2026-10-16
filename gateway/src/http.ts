@@ -22,6 +22,7 @@ export const proposalInputSchema = z.object({
   title: z.string().min(1).max(300),
   description: z.string().max(5000).default(''),
   category: z.string().min(1).max(100),
+  categoryPath: z.array(z.string().min(1).max(100)).max(10).optional(),
   merchant: z.string().min(1).max(200),
   priceCents: z.number().int().positive(),
   currency: z.string().length(3),

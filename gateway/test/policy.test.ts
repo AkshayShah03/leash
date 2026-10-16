@@ -103,3 +103,31 @@ describe('merchant normalization', () => {
     ]);
   });
 });
+
+describe('category path', () => {
+  const fresh = { monthSpentCents: 0, ordersToday: 0 };
+  it('accepts when an ancestor category is allowed', () => {
+    const r = evaluatePolicy(
+      mandate({ allowedCategories: ['Input Devices'] }),
+      proposal({ category: 'keyboards', categoryPath: ['Electronics', 'Computer Components', 'Input Devices', 'Keyboards'] }),
+      fresh,
+    );
+    expect(r).toEqual({ ok: true });
+  });
+  it('matches slugs against titles', () => {
+    const r = evaluatePolicy(
+      mandate({ allowedCategories: ['computer components'] }),
+      proposal({ category: 'keyboards', categoryPath: ['electronics', 'computer-components', 'input-devices'] }),
+      fresh,
+    );
+    expect(r).toEqual({ ok: true });
+  });
+  it('still denies when neither category nor path is allowed', () => {
+    const r = evaluatePolicy(
+      mandate({ allowedCategories: ['office supplies'] }),
+      proposal({ category: 'headphones', categoryPath: ['Electronics', 'Audio', 'Headphones'] }),
+      fresh,
+    );
+    expect(r.ok).toBe(false);
+  });
+});
