@@ -14,6 +14,7 @@ import { PayPalClient } from './paypal/client';
 import { runScoutTurn } from './scout/agent';
 import { Channel3Client } from './scout/channel3';
 import { GatewayClient } from './scout/gateway-client';
+import { seedDemo } from './seed';
 import { Store } from './store';
 
 function required(name: string): string {
@@ -37,6 +38,7 @@ if (sessionSecret.length < 32) throw new Error('LEASH_SESSION_SECRET must be at 
 const port = Number(process.env.PORT || 8787);
 const paypal = new PayPalRest(new PayPalClient(loadPayPalConfig()));
 const store = new Store(process.env.LEASH_DB_PATH || 'leash.db');
+if (process.env.DEMO_SEED === '1' && seedDemo(store, { vaultId: process.env.DEMO_VAULT_ID || undefined })) console.log('Demo rules seeded');
 const events = new EventBus();
 const leash = new Leash({ store, paypal, intent: makeIntentChecker(llmGenerate(), 15_000), onEvent: (e) => events.publish(e) });
 const scoutDeps = {
@@ -58,4 +60,4 @@ const app = createApp({
   scout: (args) => runScoutTurn(scoutDeps, args),
 });
 
-serve({ fetch: app.fetch, port }, (info) => console.log(`Leash gateway listening on http://localhost:${info.port}`));
+serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, (info) => console.log(`Leash gateway listening on http://localhost:${info.port}`));
