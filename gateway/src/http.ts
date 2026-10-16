@@ -99,6 +99,8 @@ function publicMandate(m: Mandate) {
 export function createApp(d: AppDeps) {
   const app = new Hono();
 
+  app.get('/healthz', (c) => c.json({ ok: true })); // unauthenticated liveness probe for Render
+
   const authOf = (c: Context): { role: Role; via: 'bearer' | 'cookie' } | null => {
     const header = c.req.header('authorization');
     if (header) {
