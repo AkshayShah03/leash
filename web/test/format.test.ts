@@ -1,0 +1,66 @@
+import { describe, expect, it } from 'vitest';
+import { formatUsd, parseUsdToCents, safeHref, statusLabel, statusTone } from '../src/lib/format';
+import type { ProposalStatus } from '../src/lib/types';
+
+describe('formatUsd', () => {
+  it('formats cents', () => {
+    expect(formatUsd(5999)).toBe('$59.99');
+    expect(formatUsd(0)).toBe('$0.00');
+    expect(formatUsd(5)).toBe('$0.05');
+    expect(formatUsd(6000)).toBe('$60.00');
+    expect(formatUsd(123456789)).toBe('$1,234,567.89');
+  });
+  it('returns a dash for invalid input', () => {
+    expect(formatUsd(-1)).toBe('—');
+    expect(formatUsd(1.5)).toBe('—');
+    expect(formatUsd(NaN)).toBe('—');
+    expect(formatUsd(Infinity)).toBe('—');
+  });
+});
+
+describe('parseUsdToCents', () => {
+  it('parses valid dollars', () => {
+    expect(parseUsdToCents('59.99')).toBe(5999);
+    expect(parseUsdToCents('60')).toBe(6000);
+    expect(parseUsdToCents('0.5')).toBe(50);
+    expect(parseUsdToCents(' 12.30 ')).toBe(1230);
+  });
+  it('rejects invalid input', () => {
+    for (const bad of ['1.005', 'abc', '-1', '', '1.', '.5', '1e3', '$5', '1,000']) {
+      expect(parseUsdToCents(bad)).toBeNull();
+    }
+  });
+});
+
+describe('safeHref', () => {
+  it('allows http(s) only', () => {
+    expect(safeHref('https://example.com/a')).toBe('https://example.com/a');
+    expect(safeHref('http://example.com')).toBe('http://example.com');
+    expect(safeHref('HTTPS://example.com')).toBe('HTTPS://example.com');
+    expect(safeHref('javascript:alert(1)')).toBeUndefined();
+    expect(safeHref('data:text/html,<b>x</b>')).toBeUndefined();
+    expect(safeHref('/relative')).toBeUndefined();
+    expect(safeHref('//evil.com')).toBeUndefined();
+    expect(safeHref(undefined)).toBeUndefined();
+    expect(safeHref(null)).toBeUndefined();
+    expect(safeHref('')).toBeUndefined();
+  });
+});
+
+describe('status mapping', () => {
+  const cases: Array<[ProposalStatus, string, string]> = [
+    ['tracked', 'Bought · tracking', 'success'],
+    ['captured', 'Bought', 'success'],
+    ['auto_approved', 'Paying…', 'progress'],
+    ['human_approved', 'Paying…', 'progress'],
+    ['pending_human', 'Needs your OK', 'warning'],
+    ['denied', 'Blocked', 'danger'],
+    ['refunded', 'Refunded', 'neutral'],
+    ['failed', 'Failed', 'danger'],
+    ['proposed', 'Checking…', 'progress'],
+  ];
+  it.each(cases)('%s', (s, label, tone) => {
+    expect(statusLabel(s)).toBe(label);
+    expect(statusTone(s)).toBe(tone);
+  });
+});
