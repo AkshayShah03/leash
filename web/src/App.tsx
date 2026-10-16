@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './lib/api';
 import { safeHref } from './lib/format';
 import { useLedgerEvents } from './lib/sse';
@@ -34,12 +34,16 @@ function Shell({ onLogout }: { onLogout: () => void }) {
     }
   }, []);
 
+  const activeId = useRef<string | null>(null);
+  activeId.current = mandateId;
+
   useEffect(() => { setProposals([]); }, [mandateId]);
 
   const loadProposals = useCallback(async () => {
     if (!mandateId) return;
     try {
-      setProposals(await api.listProposals(mandateId));
+      const list = await api.listProposals(mandateId);
+      if (activeId.current === mandateId) setProposals(list);
     } catch {
       // keep previous list; next event retries
     }
@@ -98,7 +102,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         pending={pending}
         mandates={mandates ?? []}
         mandateId={mandateId}
-        onMandate={setMandateId}
+        onMandate={(id) => { setProposals([]); setMandateId(id); }}
         onLogout={onLogout}
       />
       <div className="main">
@@ -109,7 +113,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
             {connected ? 'Live' : 'Offline'}
           </span>
         </header>
-        {loadError && <p role="alert" className="notice">Could not load your mandates. Check the gateway and refresh.</p>}
+        {loadError && <p role="alert" className="notice">Could not load your spending rules. Check the gateway and refresh.</p>}
         {mandate && <BudgetCard mandate={mandate} proposals={proposals} onConnect={connect} connecting={connecting} />}
         <main className="content">
           {activeTab === 'chat' && <Chat />}
@@ -120,7 +124,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
               mandate={mandate}
               creating={creating}
               onSaved={(m, kind) => {
-                setToast(kind === 'created' ? 'Mandate created' : 'Rules saved');
+                setToast(kind === 'created' ? 'Spending rules created' : 'Rules saved');
                 if (kind === 'created') setMandateId(m.id);
                 void loadMandates();
               }}

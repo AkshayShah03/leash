@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Rules, { validateRules, diffMandate, formFromMandate } from '../src/pages/Rules';
 import { api, ApiError } from '../src/lib/api';
@@ -54,7 +54,7 @@ describe('Rules page', () => {
     const spy = vi.spyOn(api, 'createMandate').mockResolvedValue(created);
     const onSaved = vi.fn();
     render(<Rules creating onSaved={onSaved} />);
-    const submit = screen.getByRole('button', { name: 'Create mandate' });
+    const submit = screen.getByRole('button', { name: 'Create spending rules' });
     expect((submit as HTMLButtonElement).disabled).toBe(true);
     await userEvent.type(screen.getByLabelText('Goal'), 'Gifts');
     await userEvent.type(screen.getByLabelText('Per-order cap ($)'), '300');
@@ -95,5 +95,59 @@ describe('Rules page', () => {
   it('shows Reconnect when connected', () => {
     render(<Rules mandate={{ ...mandate, connected: true }} />);
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
+  });
+
+  it('Reconnect calls onConnect', async () => {
+    const onConnect = vi.fn();
+    render(<Rules mandate={{ ...mandate, connected: true }} onConnect={onConnect} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
+    expect(onConnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('chips dedupe case-insensitively and trim whitespace', async () => {
+    render(<Rules creating />);
+    const blocked = screen.getByLabelText('Blocked merchants');
+    await userEvent.type(blocked, '  Shady.com  {Enter}');
+    await userEvent.type(blocked, 'SHADY.COM{Enter}');
+    expect(screen.getAllByText('Shady.com')).toHaveLength(1);
+    expect(screen.queryByText('SHADY.COM')).toBeNull();
+    expect(screen.getAllByRole('button', { name: /^Remove/ })).toHaveLength(1);
+  });
+
+  it('clicking a suggestion keeps the typed draft as a chip', async () => {
+    render(<Rules creating />);
+    const cats = screen.getByLabelText('Allowed categories');
+    await userEvent.type(cats, 'Toys');
+    await userEvent.click(screen.getByRole('button', { name: '+ Audio' }));
+    expect(screen.getByText('Toys')).toBeTruthy();
+    expect(screen.getByText('Audio')).toBeTruthy();
+  });
+
+  it('create: a second save after success does not create a duplicate', async () => {
+    let release: (m: PublicMandate) => void = () => {};
+    const spy = vi.spyOn(api, 'createMandate').mockImplementation(
+      () => new Promise((r) => { release = r; }),
+    );
+    const onSaved = vi.fn();
+    render(<Rules creating onSaved={onSaved} />);
+    await userEvent.type(screen.getByLabelText('Goal'), 'Gifts');
+    await userEvent.type(screen.getByLabelText('Per-order cap ($)'), '50');
+    await userEvent.type(screen.getByLabelText('Monthly budget ($)'), '200');
+    const submit = screen.getByRole('button', { name: 'Create spending rules' });
+    await userEvent.click(submit);
+    await userEvent.click(screen.getByRole('button', { name: 'Saving…' }));
+    await act(async () => { release({ ...mandate, id: 'new' }); });
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    await userEvent.click(screen.getByRole('button', { name: 'Create spending rules' }));
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses spending-rules copy and accessible group/live regions', async () => {
+    render(<Rules creating />);
+    expect(screen.getByRole('heading', { name: 'Set up your spending rules' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Allowed categories suggestions' })).toBeTruthy();
+    await userEvent.click(screen.getByLabelText('Goal'));
+    await userEvent.tab();
+    expect(screen.getByText('Tell Scout what you are shopping for.').getAttribute('aria-live')).toBe('polite');
   });
 });

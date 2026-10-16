@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { CheckCircle2, Link2, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { parseUsdToCents } from '../lib/format';
@@ -109,14 +109,15 @@ function ChipInput({
   label: string;
   hint?: string;
   values: string[];
-  onChange: (v: string[]) => void;
+  onChange: (fn: (prev: string[]) => string[]) => void;
   suggestions?: string[];
 }) {
   const [draft, setDraft] = useState('');
-  const has = (s: string) => values.some((v) => v.toLowerCase() === s.toLowerCase());
+  const hasIn = (list: string[], s: string) => list.some((v) => v.toLowerCase() === s.toLowerCase());
+  const has = (s: string) => hasIn(values, s);
   function add(raw: string) {
     const s = raw.trim();
-    if (s && !has(s)) onChange([...values, s]);
+    if (s) onChange((prev) => (hasIn(prev, s) ? prev : [...prev, s]));
     setDraft('');
   }
   function onKey(e: KeyboardEvent<HTMLInputElement>) {
@@ -124,7 +125,7 @@ function ChipInput({
       e.preventDefault();
       add(draft);
     } else if (e.key === 'Backspace' && draft === '' && values.length) {
-      onChange(values.slice(0, -1));
+      onChange((prev) => prev.slice(0, -1));
     }
   }
   const open = (suggestions ?? []).filter((s) => !has(s));
@@ -135,7 +136,7 @@ function ChipInput({
         {values.map((v) => (
           <span className="tag" key={v}>
             {v}
-            <button type="button" className="tag__x" aria-label={`Remove ${v}`} onClick={() => onChange(values.filter((x) => x !== v))}>
+            <button type="button" className="tag__x" aria-label={`Remove ${v}`} onClick={() => onChange((prev) => prev.filter((x) => x !== v))}>
               <X size={14} aria-hidden="true" />
             </button>
           </span>
@@ -152,7 +153,7 @@ function ChipInput({
       </div>
       {hint && <p className="field__hint">{hint}</p>}
       {open.length > 0 && (
-        <div className="suggest" aria-label={`${label} suggestions`}>
+        <div className="suggest" role="group" aria-label={`${label} suggestions`}>
           {open.map((s) => (
             <button type="button" key={s} className="suggest__btn" onClick={() => add(s)}>+ {s}</button>
           ))}
@@ -177,13 +178,15 @@ export default function Rules({ mandate = null, creating, onSaved, onConnect, co
   const [saving, setSaving] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState(false);
+  const [created, setCreated] = useState(false);
+  const inFlight = useRef(false);
 
   if (!creating && mandate === null) return null;
 
   const { errors, values } = validateRules(form);
   const patch = editing && values ? diffMandate(mandate, values) : null;
   const unchanged = patch !== null && Object.keys(patch).length === 0;
-  const canSubmit = values !== null && !saving && !unchanged;
+  const canSubmit = values !== null && !saving && !created && !unchanged;
   const set = <K extends keyof RulesForm>(k: K, v: RulesForm[K]) => {
     setForm((f) => ({ ...f, [k]: v }));
     setServerError(null);
@@ -194,7 +197,8 @@ export default function Rules({ mandate = null, creating, onSaved, onConnect, co
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!values || saving) return;
+    if (!values || saving || created || inFlight.current) return;
+    inFlight.current = true;
     setSaving(true);
     setServerError(null);
     try {
@@ -204,11 +208,13 @@ export default function Rules({ mandate = null, creating, onSaved, onConnect, co
         onSaved?.(saved, 'updated');
       } else {
         const saved = await api.createMandate({ ...values, currency: 'USD', allowedMerchants: null });
+        setCreated(true);
         onSaved?.(saved, 'created');
       }
     } catch (ex) {
       setServerError(ex instanceof Error && ex.message ? ex.message : 'Could not save your rules.');
     } finally {
+      inFlight.current = false;
       setSaving(false);
     }
   }
@@ -224,7 +230,7 @@ export default function Rules({ mandate = null, creating, onSaved, onConnect, co
     <div className="rules">
       <form className="rules__form" onSubmit={submit} noValidate>
         <section className="card">
-          <h2 className="card__title">{editing ? 'Spending rules' : 'Set up your first mandate'}</h2>
+          <h2 className="card__title">{editing ? 'Spending rules' : 'Set up your spending rules'}</h2>
           <p className="card__sub">
             {editing ? 'Change what Scout is allowed to buy for you.' : 'Tell Scout what to shop for and how much it may spend.'}
           </p>
@@ -238,20 +244,20 @@ export default function Rules({ mandate = null, creating, onSaved, onConnect, co
               onChange={(e) => set('goal', e.target.value)}
               {...fieldProps('goal')}
             />
-            {err('goal') && <p id="goal-err" className="field__error">{err('goal')}</p>}
+            {err('goal') && <p id="goal-err" className="field__error" aria-live="polite">{err('goal')}</p>}
           </div>
           <div className="grid2">
             <div className="field">
               <label className="field__label" htmlFor="rules-cap">Per-order cap ($)</label>
               <input id="rules-cap" inputMode="decimal" value={form.cap} placeholder="50.00"
                 onChange={(e) => set('cap', e.target.value)} {...fieldProps('cap')} />
-              {err('cap') && <p id="cap-err" className="field__error">{err('cap')}</p>}
+              {err('cap') && <p id="cap-err" className="field__error" aria-live="polite">{err('cap')}</p>}
             </div>
             <div className="field">
               <label className="field__label" htmlFor="rules-budget">Monthly budget ($)</label>
               <input id="rules-budget" inputMode="decimal" value={form.budget} placeholder="200.00"
                 onChange={(e) => set('budget', e.target.value)} {...fieldProps('budget')} />
-              {err('budget') && <p id="budget-err" className="field__error">{err('budget')}</p>}
+              {err('budget') && <p id="budget-err" className="field__error" aria-live="polite">{err('budget')}</p>}
             </div>
           </div>
         </section>
@@ -263,7 +269,7 @@ export default function Rules({ mandate = null, creating, onSaved, onConnect, co
             label="Allowed categories"
             hint="Leave empty to allow any category."
             values={form.categories}
-            onChange={(v) => set('categories', v)}
+            onChange={(fn) => setForm((f) => ({ ...f, categories: fn(f.categories) }))}
             suggestions={CATEGORY_SUGGESTIONS}
           />
           <ChipInput
@@ -271,7 +277,7 @@ export default function Rules({ mandate = null, creating, onSaved, onConnect, co
             label="Blocked merchants"
             hint="Scout will never buy from these."
             values={form.blocked}
-            onChange={(v) => set('blocked', v)}
+            onChange={(fn) => setForm((f) => ({ ...f, blocked: fn(f.blocked) }))}
           />
         </section>
 
@@ -281,7 +287,7 @@ export default function Rules({ mandate = null, creating, onSaved, onConnect, co
             <label className="field__label" htmlFor="rules-orders">Max orders per day</label>
             <input id="rules-orders" className="narrow" inputMode="numeric" value={form.maxOrders}
               onChange={(e) => set('maxOrders', e.target.value)} {...fieldProps('maxOrders')} />
-            {err('maxOrders') && <p id="maxOrders-err" className="field__error">{err('maxOrders')}</p>}
+            {err('maxOrders') && <p id="maxOrders-err" className="field__error" aria-live="polite">{err('maxOrders')}</p>}
           </div>
           <div className="field">
             <label className="field__label" htmlFor="rules-threshold">Review threshold</label>
@@ -303,7 +309,7 @@ export default function Rules({ mandate = null, creating, onSaved, onConnect, co
         {serverError && <p role="alert" className="notice">{serverError}</p>}
         <div className="rules__actions">
           <button type="submit" className="btn btn--primary" disabled={!canSubmit}>
-            {saving ? 'Saving…' : editing ? 'Save changes' : 'Create mandate'}
+            {saving ? 'Saving…' : editing ? 'Save changes' : 'Create spending rules'}
           </button>
           {savedNote && !saving && unchanged && (
             <span className="saved" role="status"><CheckCircle2 size={16} aria-hidden="true" /> Saved</span>

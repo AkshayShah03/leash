@@ -46,7 +46,7 @@ export default function Sidebar({ tab, onTab, pending, mandates, mandateId, onMa
         {mandates.length > 1 && (
           <select
             className="sidebar__select"
-            aria-label="Mandate"
+            aria-label="Spending rules"
             value={mandateId ?? ''}
             onChange={(e) => onMandate(e.target.value)}
           >
