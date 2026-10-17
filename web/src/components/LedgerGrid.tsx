@@ -66,7 +66,7 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
       { field: 'time', headerName: 'Time', flex: 1, minWidth: 140, valueFormatter: (p) => formatTime(p.value as string) },
       {
         field: 'title', headerName: 'Product', flex: 2, minWidth: 220,
-        tooltipField: 'title',
+        tooltip: (p) => p.data?.title,
         cellRenderer: (p: Params) =>
           p.data ? (
             <button
@@ -89,7 +89,7 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
       },
       { field: 'decidedBy', headerName: 'Decided by', width: 120 },
       {
-        field: 'orderId', headerName: 'PayPal order', flex: 1, minWidth: 150, tooltipField: 'orderId',
+        field: 'orderId', headerName: 'PayPal order', flex: 1, minWidth: 150, tooltip: (p) => p.data?.orderId,
         cellRenderer: (p: Params) => (p.value ? <span className="lmono" title={String(p.value)}>{String(p.value)}</span> : <span className="lmuted">—</span>),
       },
       {

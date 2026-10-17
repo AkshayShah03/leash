@@ -1,8 +1,10 @@
 import {
+  CellStyleModule,
   ClientSideRowModelApiModule,
   ClientSideRowModelModule,
   ModuleRegistry,
   RenderApiModule,
+  RowApiModule,
   RowStyleModule,
   TooltipModule,
   ValidationModule,
@@ -10,11 +12,14 @@ import {
 } from 'ag-grid-community';
 
 // Only what the two grids use: client-side rows + sorting (via ClientSideRowModel), row class rules,
-// tooltips, getRowNode, and refreshCells/redrawRows. ValidationModule is dev-only (helpful warnings).
+// tooltips, CellStyle (colDef.type 'rightAligned' sets cellClass), RowApi (getRowNode/redrawRows), RenderApi (refreshCells).
+// ValidationModule is dev-only (helpful warnings).
 ModuleRegistry.registerModules([
   ClientSideRowModelModule,
   ClientSideRowModelApiModule,
+  CellStyleModule,
   RenderApiModule,
+  RowApiModule,
   RowStyleModule,
   TooltipModule,
   ...(import.meta.env.DEV ? [ValidationModule] : []),
