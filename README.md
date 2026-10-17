@@ -2,21 +2,83 @@
 
 **Agents need a leash before they get a wallet.**
 
-Leash is a trust layer between AI agents and PayPal. Agents can only *propose* purchases. Leash enforces spending rules the agent cannot override, runs an AI intent check that can only make decisions stricter, sends edge cases to a human, executes approved purchases with a vaulted PayPal wallet, and records every step in an append-only ledger.
+Leash is a trust layer between AI agents and PayPal. Agents can only *propose* purchases. Leash enforces spending rules the agent cannot override, runs an AI intent check that can only make decisions stricter, sends edge cases to a human, executes approved purchases from a vaulted PayPal wallet, and records every step in an append-only ledger.
 
-> Status: Plans 1-3 done: gateway, Scout shopping agent, and web UI. Deployment and demo polish are next.
+Built for the PayPal AI Hackathon. Sandbox only; not affiliated with PayPal.
+
+## Try it in 30 seconds
+
+Open the hosted demo: `https://<your-service>.onrender.com` (passcode: given in the Devpost submission). On a free instance the first request can take about a minute to wake.
+
+Ask the Chat page for:
+
+1. **"I need an ergonomic keyboard under $60"** : passes the rules and the AI check, so it is **bought** (sandbox order, capture, tracking). Refund it from the Ledger.
+2. **"Get me a desk lamp"** : **blocked by the rules** because the category is not in the allowed list. The AI check never runs.
+3. `<TBD after live tuning — see docs/demo/SCENARIOS.md>`
+4. **`npm run demo:attack`** (from `gateway/`) : a compromised-agent script that tries to get around the rules with the agent key. Leash **denies** it (403 / denied); nothing is charged.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/chat-bought.png" alt="Chat: a purchase approved and bought"></td>
+    <td><img src="docs/screenshots/approvals-flagged.png" alt="Approvals: a purchase flagged for the owner"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/ledger-audit.png" alt="Ledger: every step of every purchase"></td>
+    <td><img src="docs/screenshots/rules.png" alt="Rules: spending limits and PayPal connection"></td>
+  </tr>
+</table>
 
 ## How it works
 
-1. **Mandate** — the owner sets a goal and hard limits (per-order cap, monthly budget, categories, merchants, daily orders) and connects PayPal once (PayPal Vault).
-2. **Policy engine** — deterministic rules; a denial is final.
-3. **AI intent check** — an open-weight model (Kimi K3 by default, via OpenRouter) scores how well the product matches the goal and request. Product text is fenced as untrusted data. A low score sends the purchase to the owner; it can never approve something the rules denied.
-4. **Execution** — PayPal Orders v2 charge on the vaulted wallet, shipment tracking, one-click refunds. Every call is idempotent (`PayPal-Request-Id`).
-5. **Roles** — the agent key can only propose and read; approve/deny/refund/connect need the owner key.
+```mermaid
+flowchart LR
+  B[Browser UI] <--> G
+  subgraph G[Leash gateway]
+    direction TB
+    R[1. Rules engine<br/>deterministic, final] --> A[2. AI intent check<br/>can only tighten]
+    A --> O[3. Owner approval<br/>edge cases]
+    O --> X[4. PayPal execution]
+    L[(Append-only ledger)]
+  end
+  S[Scout agent<br/>agent key: propose and read only] -- propose --> G
+  S <--> C3[Channel3<br/>product data]
+  B <--> S
+  X <--> P[PayPal sandbox<br/>Vault / Orders / Refunds / Tracking]
+```
 
-## Sandbox note
+The owner sets spending rules once and connects PayPal. The Scout agent searches products (Channel3) and calls `propose_purchase` on the gateway with its agent key. Each proposal then goes through:
 
-Leash runs entirely on the PayPal **sandbox**. Purchases are paid to the project's own sandbox merchant account; no real money moves.
+1. **Rules** (`gateway/src/policy.ts`): currency, per-order cap, remaining monthly budget, allowed categories, blocked/allowed merchants, daily order limit. Any failure is a denial, and the AI check is skipped.
+2. **AI intent check** (`intent.ts`, `intent-llm.ts`, `decision.ts`): scores 0 to 1 how well the product matches the owner's goal and the request. At or above the review threshold the purchase is auto-approved; below it, or if the check errors or times out, it goes to the owner.
+3. **Owner approval**: the owner approves or denies in the Approvals page. Approval re-runs the rules before committing.
+4. **Execution** (`leash.ts`, `paypal/api.ts`): charge, capture, shipment tracking. Refunds are owner-only.
+
+## Trust model
+
+- **The agent can only propose.** The agent key can create proposals and read; approve, deny, refund and connect PayPal require the owner key or a UI session (`allow('owner')` in `http.ts`).
+- **Rules are final.** A rule denial is returned without calling the model, and the commit step re-checks the rules synchronously before any money moves.
+- **AI can only tighten.** The intent verdict can turn an auto-approval into a human review; it has no path to override a denial (`decision.ts`).
+- **Owner approves edge cases.** Low scores and unavailable intent checks become `pending_human`.
+- **Every step is in the ledger.** Each state change appends an event with actor (agent, policy, intent, owner, paypal, system) and detail. The store only inserts and reads events; there is no update or delete path.
+- **Prompt-injection fencing.** Product text is JSON-encoded inside `<untrusted_product>` and the agent's reported request inside `<agent_reported_request>`; the system prompt tells the model never to follow either, and the owner's goal wins on conflict. Scout's prompt also treats tool results as data.
+- **Idempotency.** Proposals accept an idempotency key; PayPal calls send a stable `PayPal-Request-Id` (`order-<proposalId>`, `refund-<proposalId>`), so a retry after an ambiguous failure returns the original result instead of charging twice. A refund already in progress is rejected.
+
+## PayPal integration
+
+All calls are in `gateway/src/paypal/api.ts` against the sandbox API:
+
+- **Vault**: setup tokens (`POST /v3/vault/setup-tokens`) and payment tokens (`/v3/vault/payment-tokens`) so the owner approves the wallet once.
+- **Orders v2**: create an order with `payment_source.paypal.vault_id` (`/v2/checkout/orders`), then capture it.
+- **Shipment tracking**: `POST /v2/checkout/orders/{id}/track` after capture.
+- **Refunds**: `POST /v2/payments/captures/{id}/refund`.
+- **Idempotency**: `PayPal-Request-Id` on order and refund calls.
+
+## AI tools used
+
+- **Kimi K3 (Moonshot AI, open weights) via OpenRouter + Vercel AI SDK**: the purchase intent check (JSON-schema structured output) and Scout's tool-calling shopping agent (`search_products`, `propose_purchase`, `check_budget`). Default model is `moonshotai/kimi-k3`; swap with `LEASH_MODEL` (and `SCOUT_MODEL` for Scout).
+- **Channel3**: product search and offers for Scout.
 
 ## Run it
 
@@ -46,7 +108,7 @@ Open http://localhost:8787 and log in with the passcode. Create spending rules, 
 2. Set its password via the account's View/edit account.
 3. New sandbox accounts can take a few minutes to activate.
 
-Other gateway scripts: `npm test` (unit tests), `npm run test:e2e` (real sandbox propose, capture, track, refund; needs `PAYPAL_VAULT_ID` from `npm run spike`), `npm run build:web`.
+Other gateway scripts: `npm test`, `npm run test:e2e`, `npm run seed`, `npm run build:web` (see Tests below).
 
 ## Develop the UI
 
@@ -70,10 +132,15 @@ Run a **single instance** only: live events are held in memory, so scaling out b
 
 **Free-tier alternative (no disk):** persistent disks need a paid instance. On the free plan, remove the `disk:` block, set `plan: free`, `LEASH_DB_PATH=/tmp/leash.db` and keep `DEMO_SEED=1`. The database resets on every restart or redeploy (the demo rules are re-seeded), and the instance sleeps when idle, so the first request after a pause takes about a minute.
 
-## AI tools used
+## Tests
 
-- **Kimi K3 (Moonshot AI, open weights) via OpenRouter + Vercel AI SDK**: the purchase intent check (JSON-schema structured output) and Scout's tool-calling shopping agent. Swap models with `LEASH_MODEL` (and `SCOUT_MODEL` for Scout).
-- **Channel3**: product search for Scout.
+- Gateway: `cd gateway && npm test` runs 207 tests (1 skipped, the live sandbox e2e) across 18 files: rules, decision, intent prompt/fencing, ledger, auth/roles, security headers and path traversal, PayPal client and API, Scout tools, seed.
+- Web: `cd web && npm test` runs 129 tests across 16 files. Also `npm run typecheck` and `npm run build`.
+- Live sandbox e2e: `cd gateway && npm run test:e2e` performs a real propose, capture, track and refund against the PayPal sandbox. It needs sandbox credentials in `.env` and `PAYPAL_VAULT_ID` from `npm run spike`.
+
+## Sandbox and honesty note
+
+Leash runs entirely on the PayPal **sandbox**. Every order, capture, refund, denial and approval shown is real in the sandbox; purchases are paid to the project's own sandbox merchant at the Channel3 listed price, and nothing ships. No real money moves. The shipment tracking number is generated by Leash, not a carrier.
 
 ## Credits
 
