@@ -15,7 +15,8 @@
     "seed": "tsx --env-file=.env scripts/seed.ts",
     "spike": "tsx --env-file=.env scripts/spike-vault.ts",
     "smoke:intent": "tsx --env-file=.env scripts/smoke-intent.ts",
-    "smoke:scout": "tsx --env-file=.env scripts/smoke-scout.ts"
+    "smoke:scout": "tsx --env-file=.env scripts/smoke-scout.ts",
+    "demo:attack": "tsx --env-file=.env scripts/demo-attack.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",
