@@ -34,6 +34,8 @@ function ApprovalCard({ proposal, outcome, leaving, onChanged, onToast, onOutcom
   const [reason, setReason] = useState('');
   const { input, intent } = proposal;
   const href = safeHref(input.productUrl);
+  // The AI row above already shows the intent score and reason; drop the duplicate policy note.
+  const notes = proposal.reasons.filter((r) => !r.startsWith('Intent score '));
 
   async function run(call: () => Promise<Proposal>, okToast: string, isApprove: boolean) {
     if (inFlight.current) return;
@@ -77,7 +79,9 @@ function ApprovalCard({ proposal, outcome, leaving, onChanged, onToast, onOutcom
         <div className="acard__price">{formatUsd(input.priceCents)}</div>
       </div>
 
-      <blockquote className="acard__ask">You asked: “{input.userRequest}”</blockquote>
+      <blockquote className="acard__ask">
+        <span className="acard__ask-label">Request (as reported by the agent):</span> “{input.userRequest}”
+      </blockquote>
 
       {intent && (
         <div className="acard__ai">
@@ -89,9 +93,9 @@ function ApprovalCard({ proposal, outcome, leaving, onChanged, onToast, onOutcom
         </div>
       )}
 
-      {proposal.reasons.length > 0 && (
+      {notes.length > 0 && (
         <ul className="acard__reasons" aria-label="Policy notes">
-          {proposal.reasons.map((r, i) => (
+          {notes.map((r, i) => (
             <li key={i}><ShieldCheck size={14} aria-hidden="true" />{r}</li>
           ))}
         </ul>

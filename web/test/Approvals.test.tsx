@@ -36,6 +36,27 @@ describe('Approvals', () => {
     expect(screen.queryByRole('link')).toBeNull();
   });
 
+  it('labels the request as agent-reported', () => {
+    setup();
+    expect(screen.getByText('Request (as reported by the agent):')).toBeTruthy();
+    expect(screen.queryByText(/You asked/)).toBeNull();
+  });
+
+  it('hides the duplicate intent-score note but keeps other policy notes', () => {
+    setup([proposal({
+      reasons: ['Intent score 0.50 below threshold 0.70: explicit gaming focus', 'Category "gaming" is not allowed'],
+    })]);
+    const notes = screen.getByRole('list', { name: 'Policy notes' });
+    expect(notes.textContent).toContain('Category "gaming" is not allowed');
+    expect(notes.textContent).not.toContain('Intent score');
+    expect(screen.getAllByText(/explicit gaming focus/)).toHaveLength(1);
+  });
+
+  it('omits the policy notes list when only the intent-score note exists', () => {
+    setup([proposal({ reasons: ['Intent score 0.50 below threshold 0.70: explicit gaming focus'] })]);
+    expect(screen.queryByRole('list', { name: 'Policy notes' })).toBeNull();
+  });
+
   it('approves, toasts and refetches', async () => {
     const spy = vi.spyOn(api, 'approve').mockResolvedValue(proposal({ status: 'human_approved' }));
     const { onChanged, onToast } = setup();
