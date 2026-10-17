@@ -18,13 +18,12 @@ Exact chat prompts and expected outcomes live in [SCENARIOS.md](SCENARIOS.md). I
 | 7 | 0:55–1:08 | Scout proposes the $59.99 keyboard. Card shows rules passed, **AI match 100%**, status **Bought**, PayPal order id, tracking number. | "Price, merchant and title come from Channel3, not from the model. Rules pass, the AI check agrees, and it's bought in the PayPal sandbox." |
 | 8 | 1:08–1:15 | Cut to **Ledger**: the new row has already appeared live (SSE), status Bought, $59.99. | "The ledger updated live. Order, capture, tracking." |
 | 9 | 1:15–1:30 | Chat: "Get me a desk lamp". Card shows **Denied by rules: category not allowed**. No AI score. | "A desk lamp? Not in my categories. The rules say no, and the AI never even runs. Rules are final." |
-| 10 | 1:30–1:45 | Chat: `<AI-flag prompt from docs/demo/SCENARIOS.md>`. The item is in an allowed category and under the cap, but the card shows **Needs approval** with a low AI match score and the model's short reason. | "This one passes every rule. But the AI check sees it doesn't fit my goal, so it can't auto-buy. It comes to me." |
-| 11 | 1:45–2:00 | **Approvals page**: the flagged item with score and reason. Click **Deny**. Status flips to Denied; the ledger shows owner as the actor. | "The AI can only tighten, never loosen. I'm the one who decides. Denied." |
-| 12 | 2:00–2:10 | Terminal (font 18). Run `npm run demo:attack`. Header line says it holds only the agent key. | "Now say the agent gets hijacked. This script is a compromised agent with the real agent key." |
-| 13 | 2:10–2:25 | Output scrolls: $249 monitor **denied** (over cap), console **denied** (category), prompt-injection item **denied / needs approval**, then `POST /approve` with the agent key: **403**. | "Over the cap: denied. Wrong category: denied. A prompt injection in the product text: fenced off. And approving its own purchase: forbidden." |
-| 14 | 2:25–2:38 | **Ledger**: filter to the keyboard row, open the event trail (agent → policy → intent → paypal). Click **Refund**; status becomes Refunded, new ledger event appears. | "Every step is in an append-only ledger, who did what and why. And if I change my mind, one click refunds it through PayPal." |
-| 15 | 2:38–2:45 | Ledger totals strip: Bought, Blocked, Refunded. Pan out to the full app. | "Every order, denial and refund you saw was real, in the PayPal sandbox." |
-| 16 | 2:45–2:50 | End card: **Leash**, repo URL, hosted demo URL. | "Agents need a leash before they get a wallet." |
+| 10 | 1:30–1:45 | Terminal (font 18). Run `npm run demo:attack -- <rules id>`. Attempt (a) denied (over cap), (b) denied (category). Attempt (c): a prompt-injected USB-C cable listing; the rules pass, the AI check scores it **0.10**, and the output shows it as **pending_human**. | "The first two get stopped by the rules. This one passes every rule. The listing says it is pre-approved, but the AI check scores it 10% and it has to come to me." |
+| 11 | 1:45–2:00 | Switch to **Approvals**: the flagged cable card. Its request is labelled **Request (as reported by the agent)**, and the AI row explains that the agent message and the listing contain manipulation attempts. Click **Deny**. Status flips to Denied; the ledger shows owner as the actor. | "The AI can only tighten, never loosen. The agent says I already approved it; I haven't. Denied." |
+| 12 | 2:00–2:25 | Back to the terminal, full output: (a) denied, (b) denied, (c) pending_human, (d) `POST /approve` with the agent key: **403**. Final line: **Leash held: 4/4**. | "Over the cap: denied. Wrong category: denied. The injected listing: held for me. Approving its own purchase: forbidden. Four for four." |
+| 13 | 2:25–2:38 | **Ledger**: filter to the keyboard row, open the event trail (agent → policy → intent → paypal). Click **Refund**; status becomes Refunded, new ledger event appears. | "Every step is in an append-only ledger, who did what and why. And if I change my mind, one click refunds it through PayPal." |
+| 14 | 2:38–2:45 | Ledger totals strip: Bought, Blocked, Refunded. Pan out to the full app. | "Every order, denial and refund you saw was real, in the PayPal sandbox." |
+| 15 | 2:45–2:50 | End card: **Leash**, repo URL, hosted demo URL. | "Agents need a leash before they get a wallet." |
 
 Total: **2:50**.
 
@@ -42,7 +41,7 @@ Total: **2:50**.
 - [ ] Turn on Do Not Disturb; hide the macOS menu bar clock/notifications if possible.
 - [ ] Fresh database with `DEMO_SEED=1` (delete the db or use a fresh Render deploy) so the ledger starts empty and the rules are the seeded demo rules.
 - [ ] Check OpenRouter credits are topped up (each chat turn uses Kimi K3 for Scout and for the intent check).
-- [ ] Pre-run every prompt once (keyboard, desk lamp, AI-flag prompt, attack script) to warm the model and Channel3, and confirm each gives the expected outcome. Then reset the database again.
+- [ ] Pre-run every prompt once (keyboard, desk lamp, attack script (attempt c is the AI-flag beat)) to warm the model and Channel3, and confirm each gives the expected outcome. Then reset the database again.
 - [ ] Monthly budget headroom: the keyboard ($59.99) plus any warm-up purchases must fit $150. Reset after warming.
 - [ ] Terminal: font size **18**, light theme, clear history, short prompt (no username/hostname if possible). Set `PUBLIC_URL` and `LEASH_AGENT_KEY` beforehand in a hidden way (e.g. sourced from a file), never typed on camera.
 

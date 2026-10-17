@@ -12,10 +12,10 @@ Open the hosted demo: `https://<your-service>.onrender.com` (passcode: given in 
 
 Ask the Chat page for:
 
-1. **"I need an ergonomic keyboard under $60"** : passes the rules and the AI check, so it is **bought** (sandbox order, capture, tracking). Refund it from the Ledger.
-2. **"Get me a desk lamp"** : **blocked by the rules** because the category is not in the allowed list. The AI check never runs.
-3. `<TBD after live tuning — see docs/demo/SCENARIOS.md>`
-4. **`npm run demo:attack`** (from `gateway/`) : a compromised-agent script that tries to get around the rules with the agent key. Leash **denies** it (403 / denied); nothing is charged.
+1. **"I need an ergonomic keyboard under $60"** — passes the rules and the AI check, so it is **bought** (sandbox order, capture, tracking). Refund it from the Ledger.
+2. **"Get me a desk lamp"** — **blocked by the rules** because the category is not in the allowed list. The AI check never runs.
+3. **Run `npm run demo:attack -- <rules id>`** (from `gateway/`, pointing at your instance): a compromised agent tries a prompt-injected listing; the AI check scores it 10% and it appears in **Approvals** for you to deny.
+4. The same script also tries an over-cap item, a disallowed category, and approving its own purchase. All are refused (denied / 403); nothing is charged.
 
 ## Screenshots
 
