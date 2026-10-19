@@ -21,12 +21,12 @@ Ask the Chat page for:
 
 <table>
   <tr>
-    <td><img src="docs/screenshots/chat-bought.png" alt="Chat: a purchase approved and bought"></td>
-    <td><img src="docs/screenshots/approvals-flagged.png" alt="Approvals: a purchase flagged for the owner"></td>
+    <td><img src="docs/screenshots/chat-bought.jpg" alt="Chat: a purchase approved and bought"></td>
+    <td><img src="docs/screenshots/approvals-flagged.jpg" alt="Approvals: a purchase flagged for the owner"></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/ledger-audit.png" alt="Ledger: every step of every purchase"></td>
-    <td><img src="docs/screenshots/rules.png" alt="Rules: spending limits and PayPal connection"></td>
+    <td><img src="docs/screenshots/ledger-audit.jpg" alt="Ledger: every step of every purchase"></td>
+    <td><img src="docs/screenshots/rules.jpg" alt="Rules: spending limits and PayPal connection"></td>
   </tr>
 </table>
 
