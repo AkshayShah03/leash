@@ -40,3 +40,9 @@ Live run of `npm run demo:attack`:
 Leash held: 4/4.
 
 Note: explicitly asking Scout for a "gaming headset" is correctly approved, because the AI match is high when the item matches the request. Do not use it as the flag beat.
+
+## Chat prompts (live-verified)
+
+1. **"I need an ergonomic keyboard under $60"** — bought. Verified 2026-10-16 and 2026-10-19: Logitech Wave Keys, $59.99, AI match 100%, tracked; refunded via the UI.
+2. **"also grab a nice desk lamp around $70"** — Scout proposed a $59.99 desk lamp and the rules denied it: Category "Desk Lamps" is not in the allowed categories. Verified twice live on 2026-10-16 via smoke-scout. Scout may instead decline to propose anything; the narration should cover both ("blocked or declined — either way nothing is bought").
+3. **"Also get me a gaming headset"** — bought (it matches the request, so it is not a flag beat).
