@@ -63,9 +63,9 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
   );
   const cols = useMemo<ColDef<Row>[]>(
     () => [
-      { field: 'time', headerName: 'Time', flex: 1, minWidth: 130, valueFormatter: (p) => formatTime(p.value as string) },
+      { field: 'time', headerName: 'Time', flex: 1, minWidth: 120, valueFormatter: (p) => formatTime(p.value as string) },
       {
-        field: 'title', headerName: 'Product', flex: 2, minWidth: 180,
+        field: 'title', headerName: 'Product', flex: 2, minWidth: 160,
         tooltip: (p) => p.data?.title,
         cellRenderer: (p: Params) =>
           p.data ? (
@@ -82,14 +82,14 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
       },
       { field: 'merchant', headerName: 'Merchant', flex: 1, minWidth: 120 },
       { field: 'priceCents', headerName: 'Price', width: 90, type: 'rightAligned', valueFormatter: (p) => formatUsd(p.value as number) },
-      { field: 'status', headerName: 'Status', flex: 1, minWidth: 170, cellRenderer: (p: Params) => (p.data ? <StatusChip status={p.data.status} /> : null) },
+      { field: 'status', headerName: 'Status', flex: 1, minWidth: 150, cellRenderer: (p: Params) => (p.data ? <StatusChip status={p.data.status} /> : null) },
       {
         field: 'match', headerName: 'AI match', width: 90,
         valueFormatter: (p) => (p.value == null ? '—' : `${p.value as number}%`),
       },
       { field: 'decidedBy', headerName: 'Decided by', width: 110 },
       {
-        field: 'orderId', headerName: 'PayPal order', flex: 1, minWidth: 130, tooltip: (p) => p.data?.orderId,
+        field: 'orderId', headerName: 'PayPal order', flex: 1, minWidth: 110, tooltip: (p) => p.data?.orderId,
         cellRenderer: (p: Params) => (p.value ? <span className="lmono" title={String(p.value)}>{String(p.value)}</span> : <span className="lmuted">—</span>),
       },
       {
