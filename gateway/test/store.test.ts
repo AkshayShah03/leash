@@ -10,6 +10,14 @@ function setup() {
 }
 
 describe('Store mandates', () => {
+  it('createMandate accepts a vaultId in the same write', () => {
+    const { store } = setup();
+    const { id: _id, vaultId: _v, setupTokenId: _s, ...input } = mandate();
+    const m = store.createMandate(input, { vaultId: 'V-1' });
+    expect(m.vaultId).toBe('V-1');
+    expect(store.getMandate(m.id)?.vaultId).toBe('V-1');
+  });
+
   it('listMandates returns newest first', () => {
     const { store, m } = setup();
     const { id: _i, vaultId: _v, setupTokenId: _s, ...input } = mandate();

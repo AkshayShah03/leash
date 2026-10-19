@@ -39,8 +39,8 @@ export class Store {
     );
   }
 
-  createMandate(input: MandateInput): Mandate {
-    const m: Mandate = { ...input, id: randomUUID(), vaultId: null, setupTokenId: null };
+  createMandate(input: MandateInput, opts: { vaultId?: string } = {}): Mandate {
+    const m: Mandate = { ...input, id: randomUUID(), vaultId: opts.vaultId ?? null, setupTokenId: null };
     this.db.prepare('INSERT INTO mandates (id, created_at, data) VALUES (?, ?, ?)').run(m.id, new Date().toISOString(), JSON.stringify(m));
     return m;
   }

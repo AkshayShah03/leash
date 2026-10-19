@@ -82,6 +82,32 @@ export interface AppDeps {
   scout?: RunScoutTurn;
   /** Built SPA directory; when set, non-API GETs are served from it with an index.html fallback. */
   webRoot?: string;
+  /** Per-IP rate limits (in-memory). Defaults: 10 logins and 20 scout chats per 10 minutes. */
+  rateLimits?: { session?: RateLimit; scoutChat?: RateLimit };
+}
+
+export interface RateLimit { max: number; windowMs: number }
+const DEFAULT_SESSION_LIMIT: RateLimit = { max: 10, windowMs: 10 * 60_000 };
+const DEFAULT_SCOUT_LIMIT: RateLimit = { max: 20, windowMs: 10 * 60_000 };
+
+/** Fixed-window in-memory counter per key; returns seconds to wait when over the limit, else 0. */
+function makeLimiter({ max, windowMs }: RateLimit) {
+  const hits = new Map<string, { count: number; resetAt: number }>();
+  return (key: string, now = Date.now()): number => {
+    for (const [k, v] of hits) if (v.resetAt <= now) hits.delete(k);
+    const cur = hits.get(key);
+    if (!cur) { hits.set(key, { count: 1, resetAt: now + windowMs }); return 0; }
+    if (cur.count >= max) return Math.max(1, Math.ceil((cur.resetAt - now) / 1000));
+    cur.count += 1;
+    return 0;
+  };
+}
+
+function clientIp(c: Context): string {
+  const fwd = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
+  if (fwd) return fwd;
+  const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined;
+  return env?.incoming?.socket?.remoteAddress || 'unknown';
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -110,9 +136,24 @@ export function createApp(d: AppDeps) {
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
         connectSrc: ["'self'"],
         frameAncestors: ["'none'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
       },
+      xFrameOptions: 'DENY',
     }),
   );
+
+  const limited = (limiter: (key: string) => number): MiddlewareHandler => async (c, next) => {
+    const wait = limiter(clientIp(c));
+    if (wait > 0) {
+      c.header('Retry-After', String(wait));
+      return c.json({ error: 'rate_limited' }, 429);
+    }
+    await next();
+  };
+  const sessionLimit = limited(makeLimiter(d.rateLimits?.session ?? DEFAULT_SESSION_LIMIT));
+  const scoutLimit = limited(makeLimiter(d.rateLimits?.scoutChat ?? DEFAULT_SCOUT_LIMIT));
 
   app.get('/healthz', (c) => c.json({ ok: true })); // unauthenticated liveness probe for Render
 
@@ -154,7 +195,7 @@ export function createApp(d: AppDeps) {
     return c.json({ error: 'internal_error' }, 500);
   });
 
-  app.post('/api/session', async (c) => {
+  app.post('/api/session', sessionLimit, async (c) => {
     const { passcode } = z.object({ passcode: z.string().max(500) }).parse(await c.req.json());
     if (!timingSafeEqual(sha256(passcode), sha256(d.session.passcode))) {
       await new Promise((r) => setTimeout(r, d.session.failureDelayMs ?? 500));
@@ -280,6 +321,7 @@ export function createApp(d: AppDeps) {
 
   if (d.scout) {
     app.use('/api/scout/*', allow('owner'));
+    app.post('/api/scout/chat', scoutLimit);
     app.route('/api/scout', createScoutRoute(d.scout, requireMandate));
   }
 

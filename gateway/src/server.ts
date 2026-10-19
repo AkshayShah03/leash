@@ -38,7 +38,17 @@ if (sessionSecret.length < 32) throw new Error('LEASH_SESSION_SECRET must be at 
 const port = Number(process.env.PORT || 8787);
 const paypal = new PayPalRest(new PayPalClient(loadPayPalConfig()));
 const store = new Store(process.env.LEASH_DB_PATH || 'leash.db');
-if (process.env.DEMO_SEED === '1' && seedDemo(store, { vaultId: process.env.DEMO_VAULT_ID || undefined })) console.log('Demo rules seeded');
+if (process.env.DEMO_SEED === '1') {
+  const vaultId = process.env.DEMO_VAULT_ID || undefined;
+  const seeded = seedDemo(store, { vaultId });
+  if (seeded) {
+    console.log(`Demo rules seeded: ${seeded.id}`);
+    if (!vaultId)
+      console.warn('DEMO_SEED is on but DEMO_VAULT_ID is empty — demo rules are not connected to PayPal; purchases will fail until you connect PayPal in the UI');
+  } else {
+    console.log(`Demo rules already present: ${store.listMandates().map((m) => m.id).join(', ')}`);
+  }
+}
 const events = new EventBus();
 const leash = new Leash({ store, paypal, intent: makeIntentChecker(llmGenerate(), 15_000), onEvent: (e) => events.publish(e) });
 const scoutDeps = {
@@ -48,16 +58,17 @@ const scoutDeps = {
 };
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
 const webRoot = existsSync(join(webDist, 'index.html')) ? webDist : undefined;
+const publicUrl = process.env.PUBLIC_URL || `http://localhost:${port}`;
 const app = createApp({
   leash,
   store,
   vault: paypal,
   events,
   keys: { agent: agentKey, owner: ownerKey },
-  publicUrl: process.env.PUBLIC_URL || `http://localhost:${port}`,
+  publicUrl,
   session: { passcode: uiPasscode, secret: sessionSecret },
   webRoot,
   scout: (args) => runScoutTurn(scoutDeps, args),
 });
 
-serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, (info) => console.log(`Leash gateway listening on http://localhost:${info.port}`));
+serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, () => console.log(`Leash gateway listening on ${publicUrl}`));

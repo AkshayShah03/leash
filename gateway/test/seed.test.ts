@@ -15,7 +15,7 @@ describe('seedDemo', () => {
     expect(DEMO_RULES).toEqual({
       goal: 'Keep my home office stocked', currency: 'USD', perOrderCapCents: 6000, monthlyBudgetCents: 15000,
       allowedCategories: ['Input Devices', 'Office Supplies', 'Computer Accessories', 'Headphones', 'Audio'],
-      allowedMerchants: null, blockedMerchants: [], maxOrdersPerDay: 5, reviewThreshold: 0.8,
+      allowedMerchants: null, blockedMerchants: [], maxOrdersPerDay: 25, reviewThreshold: 0.8,
     });
   });
 

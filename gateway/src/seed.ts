@@ -9,13 +9,12 @@ export const DEMO_RULES: MandateInput = {
   allowedCategories: ['Input Devices', 'Office Supplies', 'Computer Accessories', 'Headphones', 'Audio'],
   allowedMerchants: null,
   blockedMerchants: [],
-  maxOrdersPerDay: 5,
+  maxOrdersPerDay: 25,
   reviewThreshold: 0.8,
 };
 
-/** Creates the demo rules (connected to vaultId, if given) only when the store has no mandates. */
+/** Creates (in a single write) the demo rules (connected to vaultId, if given) only when the store has no mandates. */
 export function seedDemo(store: Store, opts: { vaultId?: string }): Mandate | null {
   if (store.listMandates().length > 0) return null;
-  const m = store.createMandate({ ...DEMO_RULES, allowedCategories: [...DEMO_RULES.allowedCategories] });
-  return opts.vaultId ? store.updateMandate(m.id, { vaultId: opts.vaultId }) : m;
+  return store.createMandate({ ...DEMO_RULES, allowedCategories: [...DEMO_RULES.allowedCategories] }, { vaultId: opts.vaultId });
 }
