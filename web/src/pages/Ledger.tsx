@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollText } from 'lucide-react';
 import { api } from '../lib/api';
-import { formatTime, formatUsd, statusLabel } from '../lib/format';
+import { eventLabel, formatTime, formatUsd } from '../lib/format';
 import { FILTERS, actorLabel, eventsFor, ledgerTotals, matchesFilter, type LedgerFilter } from '../lib/ledger';
 import type { LedgerEvent, Proposal } from '../lib/types';
 import EmptyState from '../components/EmptyState';
@@ -97,7 +97,7 @@ export default function Ledger({ mandateId, proposals, onChanged, onToast }: Pro
               {trail.map((e) => (
                 <li key={e.seq} className="ltrail__item">
                   <time className="ltrail__time" dateTime={e.at}>{formatTime(e.at, true)}</time>
-                  <span className="ltrail__status">{statusLabel(e.status)}</span>
+                  <span className="ltrail__status">{eventLabel(e.status)}</span>
                   <span className="ltrail__actor">{actorLabel(e.actor)}</span>
                   <span className="ltrail__detail">{e.detail}</span>
                 </li>

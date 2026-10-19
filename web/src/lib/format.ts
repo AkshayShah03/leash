@@ -38,6 +38,23 @@ export function statusLabel(s: ProposalStatus): string {
   return LABELS[s];
 }
 
+const EVENT_LABELS: Record<ProposalStatus, string> = {
+  proposed: 'Proposed',
+  auto_approved: 'Approved by AI check',
+  human_approved: 'Approved by you',
+  pending_human: 'Sent to you for approval',
+  denied: 'Denied',
+  captured: 'Paid',
+  tracked: 'Tracking added',
+  refunded: 'Refunded',
+  failed: 'Failed',
+};
+
+/** Past-tense label for an audit-trail event (events are history, unlike the live status chip). */
+export function eventLabel(s: ProposalStatus): string {
+  return EVENT_LABELS[s];
+}
+
 export function statusTone(s: ProposalStatus): Tone {
   switch (s) {
     case 'tracked':

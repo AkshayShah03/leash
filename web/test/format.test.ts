@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatTime, formatUsd, parseUsdToCents, safeHref, statusLabel, statusTone } from '../src/lib/format';
+import { formatTime, formatUsd, parseUsdToCents, safeHref, eventLabel, statusLabel, statusTone } from '../src/lib/format';
 import type { ProposalStatus } from '../src/lib/types';
 
 describe('formatUsd', () => {
@@ -75,4 +75,12 @@ describe('formatTime', () => {
     const iso = '2026-10-16T10:00:07Z';
     expect(formatTime(iso, true).length).toBeGreaterThan(formatTime(iso).length);
   });
+});
+
+describe('eventLabel', () => {
+  it.each([
+    ['proposed', 'Proposed'], ['auto_approved', 'Approved by AI check'], ['human_approved', 'Approved by you'],
+    ['pending_human', 'Sent to you for approval'], ['denied', 'Denied'], ['captured', 'Paid'],
+    ['tracked', 'Tracking added'], ['refunded', 'Refunded'], ['failed', 'Failed'],
+  ] as const)('%s', (s, label) => expect(eventLabel(s)).toBe(label));
 });

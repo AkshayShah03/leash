@@ -289,9 +289,9 @@ button, input, textarea, select { font: inherit; }
 @media (min-width: 1200px) { .lgrid > div { min-width: 0; } }
 .lmono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
 .lmuted { color: var(--ink-600); }
-.lrefund { display: inline-flex; align-items: center; gap: 4px; }
-.lrefund__q { font-size: 13px; font-weight: 600; white-space: nowrap; }
-.lrefund__btn { min-height: 32px; padding: 0 10px; font-size: 13px; }
+.lrefund { display: inline-grid; grid-template-columns: auto auto; justify-content: start; align-items: center; gap: 2px 4px; }
+.lrefund__q { grid-column: 1 / -1; font-size: 12px; font-weight: 600; white-space: nowrap; line-height: 1.1; }
+.lrefund__btn { min-height: 28px; padding: 0 8px; font-size: 13px; }
 .lnone, .lhint { margin: 0; color: var(--ink-600); font-size: 14px; }
 .lnone { padding: 24px; text-align: center; background: var(--surface); border-radius: var(--radius-card); }
 .ltrail { display: grid; gap: 12px; padding: 20px 24px; background: var(--surface); border-radius: var(--radius-card); box-shadow: 0 1px 2px rgba(20,18,26,.04), 0 4px 16px rgba(20,18,26,.06); }

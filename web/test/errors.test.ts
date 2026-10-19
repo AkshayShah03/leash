@@ -9,6 +9,7 @@ describe('humanizeError', () => {
     ['forbidden', new ApiError(403, 'forbidden'), undefined, "You don't have permission to do that."],
     ['unauthorized', new ApiError(401, 'unauthorized'), undefined, 'Your session expired — unlock again.'],
     ['scout_unavailable', new ApiError(502, 'scout_unavailable'), undefined, 'Scout is unavailable right now. Try again in a moment.'],
+    ['rate_limited', new ApiError(429, 'rate_limited'), undefined, 'Too many requests — try again in a few minutes.'],
     ['cap>budget', new ApiError(400, 'perOrderCapCents must not exceed monthlyBudgetCents'), undefined, "Per-order cap can't be more than the monthly budget"],
     ['409 with context', new ApiError(409, 'invalid_state'), { conflict: 'Already decided' }, 'Already decided'],
     ['409 without context', new ApiError(409), undefined, 'That action is no longer available.'],

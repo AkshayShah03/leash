@@ -63,9 +63,9 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
   );
   const cols = useMemo<ColDef<Row>[]>(
     () => [
-      { field: 'time', headerName: 'Time', flex: 1, minWidth: 140, valueFormatter: (p) => formatTime(p.value as string) },
+      { field: 'time', headerName: 'Time', flex: 1, minWidth: 130, valueFormatter: (p) => formatTime(p.value as string) },
       {
-        field: 'title', headerName: 'Product', flex: 2, minWidth: 220,
+        field: 'title', headerName: 'Product', flex: 2, minWidth: 180,
         tooltip: (p) => p.data?.title,
         cellRenderer: (p: Params) =>
           p.data ? (
@@ -80,20 +80,20 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
             </button>
           ) : null,
       },
-      { field: 'merchant', headerName: 'Merchant', flex: 1, minWidth: 130 },
-      { field: 'priceCents', headerName: 'Price', width: 100, type: 'rightAligned', valueFormatter: (p) => formatUsd(p.value as number) },
-      { field: 'status', headerName: 'Status', flex: 1, minWidth: 190, cellRenderer: (p: Params) => (p.data ? <StatusChip status={p.data.status} /> : null) },
+      { field: 'merchant', headerName: 'Merchant', flex: 1, minWidth: 120 },
+      { field: 'priceCents', headerName: 'Price', width: 90, type: 'rightAligned', valueFormatter: (p) => formatUsd(p.value as number) },
+      { field: 'status', headerName: 'Status', flex: 1, minWidth: 170, cellRenderer: (p: Params) => (p.data ? <StatusChip status={p.data.status} /> : null) },
       {
-        field: 'match', headerName: 'AI match', width: 110,
+        field: 'match', headerName: 'AI match', width: 90,
         valueFormatter: (p) => (p.value == null ? '—' : `${p.value as number}%`),
       },
-      { field: 'decidedBy', headerName: 'Decided by', width: 120 },
+      { field: 'decidedBy', headerName: 'Decided by', width: 110 },
       {
-        field: 'orderId', headerName: 'PayPal order', flex: 1, minWidth: 150, tooltip: (p) => p.data?.orderId,
+        field: 'orderId', headerName: 'PayPal order', flex: 1, minWidth: 130, tooltip: (p) => p.data?.orderId,
         cellRenderer: (p: Params) => (p.value ? <span className="lmono" title={String(p.value)}>{String(p.value)}</span> : <span className="lmuted">—</span>),
       },
       {
-        headerName: 'Actions', colId: 'actions', width: 230, minWidth: 230, pinned: 'right', sortable: false, resizable: false,
+        headerName: 'Actions', colId: 'actions', width: 150, minWidth: 150, pinned: 'right', sortable: false, resizable: false,
         cellRenderer: (p: Params) =>
           p.data && canRefund(p.data.proposal) && p.context ? (
             <RefundControl proposal={p.data.proposal} onChanged={p.context.onChanged} onToast={p.context.onToast} />
