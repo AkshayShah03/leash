@@ -27,7 +27,6 @@ interface Row {
   status: Proposal['status'];
   match: number | null;
   decidedBy: string;
-  orderId: string;
 }
 
 interface Props {
@@ -57,13 +56,12 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
           status: p.status,
           match: p.intent ? Math.round(p.intent.score * 100) : null,
           decidedBy: decidedBy(events, p.id),
-          orderId: p.paypal.orderId ?? '',
         })),
     [proposals, events],
   );
   const cols = useMemo<ColDef<Row>[]>(
     () => [
-      { field: 'time', headerName: 'Time', flex: 1, minWidth: 120, valueFormatter: (p) => formatTime(p.value as string) },
+      { field: 'time', headerName: 'Time', width: 150, valueFormatter: (p) => formatTime(p.value as string) },
       {
         field: 'title', headerName: 'Product', flex: 2, minWidth: 160,
         tooltip: (p) => p.data?.title,
@@ -81,17 +79,14 @@ export default function LedgerGrid({ proposals, events, selectedId, onSelect, on
           ) : null,
       },
       { field: 'merchant', headerName: 'Merchant', flex: 1, minWidth: 120 },
-      { field: 'priceCents', headerName: 'Price', width: 90, type: 'rightAligned', valueFormatter: (p) => formatUsd(p.value as number) },
+      { field: 'priceCents', headerName: 'Price', width: 100, type: 'rightAligned', valueFormatter: (p) => formatUsd(p.value as number) },
       { field: 'status', headerName: 'Status', flex: 1, minWidth: 150, cellRenderer: (p: Params) => (p.data ? <StatusChip status={p.data.status} /> : null) },
       {
-        field: 'match', headerName: 'AI match', width: 90,
+        field: 'match', headerName: 'AI match', width: 105,
         valueFormatter: (p) => (p.value == null ? '—' : `${p.value as number}%`),
       },
       { field: 'decidedBy', headerName: 'Decided by', width: 110 },
-      {
-        field: 'orderId', headerName: 'PayPal order', flex: 1, minWidth: 110, tooltip: (p) => p.data?.orderId,
-        cellRenderer: (p: Params) => (p.value ? <span className="lmono" title={String(p.value)}>{String(p.value)}</span> : <span className="lmuted">—</span>),
-      },
+      // PayPal order/capture ids are shown in each row's audit trail (kept out of the grid to avoid truncation).
       {
         headerName: 'Actions', colId: 'actions', width: 150, minWidth: 150, pinned: 'right', sortable: false, resizable: false,
         cellRenderer: (p: Params) =>
