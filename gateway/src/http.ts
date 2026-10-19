@@ -338,6 +338,13 @@ export function createApp(d: AppDeps) {
     app.get('*', async (c, next) => (isHidden(c.req.path) ? c.json({ error: 'not_found' }, 404) : next()));
     const files = serveStatic({ root });
     const index = serveStatic({ root, rewriteRequestPath: () => '/index.html' });
+    // index.html and other unhashed files must revalidate so a redeploy never serves stale chunk names;
+    // Vite's content-hashed /assets/* can be cached forever. Only successful static responses are touched.
+    app.get('*', async (c, next) => {
+      await next();
+      if (isServerPath(c.req.path) || c.res.status !== 200 || c.res.headers.has('Cache-Control')) return;
+      c.res.headers.set('Cache-Control', c.req.path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache');
+    });
     app.get('*', async (c, next) => (isServerPath(c.req.path) ? next() : files(c, next)));
     app.get('*', async (c, next) => (isServerPath(c.req.path) || isAssetLike(c.req.path) ? next() : index(c, next)));
   }

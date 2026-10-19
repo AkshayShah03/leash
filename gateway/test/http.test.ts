@@ -390,6 +390,25 @@ describe('UI endpoints', () => {
       expect(res.headers.get('x-frame-options')).toBe('DENY');
     });
 
+    it('sets cache headers so redeploys never serve a stale index.html', async () => {
+      const s = withWeb();
+      expect((await s.app.request('/')).headers.get('cache-control')).toBe('no-cache');
+      expect((await s.app.request('/approvals')).headers.get('cache-control')).toBe('no-cache');
+      expect((await s.app.request('/index.html')).headers.get('cache-control')).toBe('no-cache');
+    });
+
+    it('caches content-hashed /assets files as immutable', async () => {
+      const parent = mkdtempSync(join(tmpdir(), 'leash-cache-'));
+      const dir = join(parent, 'dist');
+      mkdirSync(join(dir, 'assets'), { recursive: true });
+      writeFileSync(join(dir, 'index.html'), '<h1>leash</h1>');
+      writeFileSync(join(dir, 'assets', 'a.js'), 'console.log(1)');
+      writeFileSync(join(dir, 'favicon.svg'), '<svg/>');
+      const app = setup(0, dir).app;
+      expect((await app.request('/assets/a.js')).headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+      expect((await app.request('/favicon.svg')).headers.get('cache-control')).toBe('no-cache');
+    });
+
     it('sends security headers on API responses too', async () => {
       const res = await withWeb().app.request('/api/ledger');
       expect(res.headers.get('x-content-type-options')).toBe('nosniff');
