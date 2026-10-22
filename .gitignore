@@ -6,3 +6,5 @@ dist/
 .DS_Store
 .superpowers/
 *.tsbuildinfo
+.env.*
+!.env.example
