@@ -8,7 +8,7 @@ Built for the PayPal AI Hackathon. Sandbox only; not affiliated with PayPal.
 
 ## Try it in 30 seconds
 
-**Live demo: https://leash-y39h.onrender.com** (passcode: in the Devpost submission's judges-only field). Everything runs on the PayPal sandbox; please refund anything you buy so the shared demo budget stays available.
+**Demo video (2:56): https://youtu.be/QmP6ZTWWyb8** · **Live demo: https://leash-y39h.onrender.com** (passcode: in the Devpost submission's judges-only field). Everything runs on the PayPal sandbox; please refund anything you buy so the shared demo budget stays available.
 
 This is a shared sandbox demo, so please refund your test purchases from the Ledger when you are done.
 

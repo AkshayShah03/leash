@@ -121,6 +121,6 @@ typescript, node.js, hono, sqlite, react, vite, ag-grid, paypal, paypal-rest-api
 | Functional demo | Hosted URL `https://leash-y39h.onrender.com` + passcode; local run instructions; `npm run demo:attack` |
 | Text description | Devpost fields from these notes; README intro, How it works, Trust model |
 | Tools section naming the AI model and how it's used | README "AI tools used"; Devpost "Tools used and how" (Kimi K3 via OpenRouter) |
-| Video < 3 min, public, no unlicensed music/marks | `docs/demo/VIDEO.md` (2:50); YouTube `<VIDEO_URL>` Public; silence or YouTube Audio Library; no PayPal logo |
+| Video < 3 min, public, no unlicensed music/marks | `docs/demo/VIDEO.md` (2:50); YouTube `https://youtu.be/QmP6ZTWWyb8` Public; silence or YouTube Audio Library; no PayPal logo |
 | Sandbox honesty | README "Sandbox and honesty note"; UI "Sandbox mode"; said in video |
 | No secrets | Keys rotated before going public; none in repo, screenshots or video |
